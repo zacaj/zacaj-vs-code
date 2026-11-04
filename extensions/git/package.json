@@ -90,13 +90,13 @@
       "scm/title": [
         {
           "command": "toggleUntracked.hide",
-          "when": "scmProvider == git && !untrackedHidden",
-          "group": "navigation"
+          "when": "((view == workbench.scm && !scmProvider) || (scmProvider == git && scmRepositoryCount == 1)) && !untrackedHidden",
+          "group": "navigation@100"
         },
         {
           "command": "toggleUntracked.show",
-          "when": "scmProvider == git && untrackedHidden",
-          "group": "navigation"
+          "when": "((view == workbench.scm && !scmProvider) || (scmProvider == git && scmRepositoryCount == 1)) && untrackedHidden",
+          "group": "navigation@100"
         }
       ],
       "scm/resourceFolder/context": [
