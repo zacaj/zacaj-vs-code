@@ -1,16 +1,24 @@
 {
-  "name": "zacaj",
-  "displayName": "zacaj",
-  "description": "",
+  "name": "save-all-existing",
+  "displayName": "Save All Existing Files",
+  "description": "Save every dirty file that already exists on disk, leaving untitled editors alone.",
   "version": "1.0.0",
+  "publisher": "zacaj",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zacaj/zacaj-vs-code",
+    "directory": "extensions/save-all-existing"
+  },
   "engines": {
     "vscode": "^1.84.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
   "main": "./out/extension.js",
+  "activationEvents": [],
   "contributes": {
     "commands": [
       {
@@ -20,24 +28,16 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
-    "test": "vscode-test",
-    "package": "vsce package"
+    "build": "node ../../scripts/build-extension.mjs",
+    "watch": "node ../../scripts/build-extension.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json",
+    "package": "node ../../scripts/build-extension.mjs --production && vsce package --no-dependencies --skip-license"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.6",
-    "@types/node": "18.x",
-    "@types/vscode": "^1.84.0",
-    "@typescript-eslint/eslint-plugin": "^6.15.0",
-    "@typescript-eslint/parser": "^6.15.0",
-    "@vscode/test-cli": "^0.0.4",
-    "@vscode/test-electron": "^2.3.8",
-    "eslint": "^8.56.0",
-    "typescript": "^5.3.3",
-    "vsce": "^2.15.0"
+    "@types/node": "^20.0.0",
+    "@types/vscode": "~1.84.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
   }
 }

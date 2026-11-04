@@ -1,25 +1,4 @@
-# zacaj README
+# Save All Existing Files
 
-This VS Code extension adds a new command "Save and Close Editor", which saves and immediately closes the active editor.
-
-## Features
-
-- Adds the command "Save and Close Editor".
-
-## Requirements
-
-- VS Code
-
-## Extension Settings
-
-This extension doesn't add any settings.
-
-## Known Issues
-
-None so far.
-
-## Release Notes
-
-### 1.0.0
-
-- Adds the command "Save and Close Editor".
+Adds **File: Save All Saved Files** (`zacaj.saveAllFiles`). It saves every dirty document that
+already exists on disk, so untitled editors are skipped and you don't get a "Save As" dialog for each one.

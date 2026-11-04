@@ -85,7 +85,7 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc -p tsconfig.json && tsc -p src/webview/tsconfig.json",
     "test": "node esbuild.mjs --tests && node --test out/test/*.test.js",
-    "package": "node esbuild.mjs --production && vsce package --no-dependencies"
+    "package": "node esbuild.mjs --production && vsce package --no-dependencies --skip-license"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

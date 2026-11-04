@@ -1,13 +1,29 @@
 {
   "name": "zacaj-git",
-  "publisher": "local",
+  "displayName": "Git Extras",
+  "description": "Extra Source Control context-menu actions: copy path, rename, untrack, add to .gitignore, and a toggle for untracked files.",
   "version": "0.0.1",
+  "publisher": "zacaj",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zacaj/zacaj-vs-code",
+    "directory": "extensions/git"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
-  "main": "./extension.js",
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "main": "./out/extension.js",
   "activationEvents": [
     "onStartupFinished"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
   ],
   "contributes": {
     "commands": [
@@ -198,5 +214,18 @@
         }
       ]
     }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-extension.mjs",
+    "watch": "node ../../scripts/build-extension.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json",
+    "package": "node ../../scripts/build-extension.mjs --production && vsce package --no-dependencies --skip-license"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "~1.80.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
   }
 }

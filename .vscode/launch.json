@@ -2,12 +2,67 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Run all extensions",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/table-viewer",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/git",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/save-all-existing",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/save-and-close"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/*/out/**/*.js"
+      ],
+      "preLaunchTask": "all: watch"
+    },
+    {
       "name": "Run Table Viewer",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}/extensions/table-viewer"],
-      "outFiles": ["${workspaceFolder}/extensions/table-viewer/out/**/*.js"],
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/table-viewer"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/table-viewer/out/**/*.js"
+      ],
       "preLaunchTask": "table-viewer: watch"
+    },
+    {
+      "name": "Run Git Extras",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/git"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/git/out/**/*.js"
+      ],
+      "preLaunchTask": "git: watch"
+    },
+    {
+      "name": "Run Save All Existing",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/save-all-existing"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/save-all-existing/out/**/*.js"
+      ],
+      "preLaunchTask": "save-all-existing: watch"
+    },
+    {
+      "name": "Run Save and Close",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/save-and-close"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/save-and-close/out/**/*.js"
+      ],
+      "preLaunchTask": "save-and-close: watch"
     }
   ]
 }

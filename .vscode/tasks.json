@@ -9,9 +9,91 @@
       "isBackground": true,
       "problemMatcher": {
         "owner": "esbuild",
-        "pattern": { "regexp": "^✘ \\[ERROR\\] (.*)$", "message": 1 },
-        "background": { "activesBegin": "^\\[watch\\] build started", "endsPattern": "^\\[watch\\] build finished" }
+        "pattern": {
+          "regexp": "^\u2718 \\[ERROR\\] (.*)$",
+          "message": 1
+        },
+        "background": {
+          "activesBegin": "^\\[watch\\] build started",
+          "endsPattern": "^\\[watch\\] build finished"
+        }
+      },
+      "presentation": {
+        "reveal": "silent"
       }
+    },
+    {
+      "label": "git: watch",
+      "type": "npm",
+      "script": "watch",
+      "path": "extensions/git",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "esbuild",
+        "pattern": {
+          "regexp": "^\u2718 \\[ERROR\\] (.*)$",
+          "message": 1
+        },
+        "background": {
+          "activesBegin": "^\\[watch\\] build started",
+          "endsPattern": "^\\[watch\\] build finished"
+        }
+      },
+      "presentation": {
+        "reveal": "silent"
+      }
+    },
+    {
+      "label": "save-all-existing: watch",
+      "type": "npm",
+      "script": "watch",
+      "path": "extensions/save-all-existing",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "esbuild",
+        "pattern": {
+          "regexp": "^\u2718 \\[ERROR\\] (.*)$",
+          "message": 1
+        },
+        "background": {
+          "activesBegin": "^\\[watch\\] build started",
+          "endsPattern": "^\\[watch\\] build finished"
+        }
+      },
+      "presentation": {
+        "reveal": "silent"
+      }
+    },
+    {
+      "label": "save-and-close: watch",
+      "type": "npm",
+      "script": "watch",
+      "path": "extensions/save-and-close",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "esbuild",
+        "pattern": {
+          "regexp": "^\u2718 \\[ERROR\\] (.*)$",
+          "message": 1
+        },
+        "background": {
+          "activesBegin": "^\\[watch\\] build started",
+          "endsPattern": "^\\[watch\\] build finished"
+        }
+      },
+      "presentation": {
+        "reveal": "silent"
+      }
+    },
+    {
+      "label": "all: watch",
+      "dependsOn": [
+        "table-viewer: watch",
+        "git: watch",
+        "save-all-existing: watch",
+        "save-and-close: watch"
+      ],
+      "problemMatcher": []
     }
   ]
 }
