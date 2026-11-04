@@ -9,6 +9,8 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspaces --if-present"
+    "test": "npm test --workspaces --if-present",
+    "package": "npm run package --workspaces --if-present",
+    "package:combined": "node scripts/package-combined.mjs"
   }
 }

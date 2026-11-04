@@ -165,6 +165,7 @@ function onRows(m: Extract<HostMessage, { type: 'rows' }>) {
     }, 1600);
   }
 
+  if (m.done) loading = false;
   if (sort) {
     recomputeThrottled();
   } else {
@@ -174,7 +175,6 @@ function onRows(m: Extract<HostMessage, { type: 'rows' }>) {
     grid.invalidate();
     refreshChrome();
   }
-  if (m.done) loading = false;
   if (follow && live) grid.scrollToBottom();
   if (popup?.refresh) popupRefreshSoon();
   if (sidePanel === 'details') renderDetails();
@@ -394,7 +394,7 @@ function refreshChrome() {
   const total = table.rows.length;
   const shown = view.length;
   const nh = order.filter((c) => hidden.has(c)).length;
-  let s = shown === total ? `${fmt(total)} rows` : `${fmt(shown)} of ${fmt(total)} rows`;
+  let s = shown === total ? `${fmt(total)} row${total === 1 ? '' : 's'}` : `${fmt(shown)} of ${fmt(total)} rows`;
   s += ` · ${fmt(table.columns.length)} columns${nh ? ` (${fmt(nh)} hidden)` : ''}`;
   if (loading) s += ' · loading…';
   else if (live) s += ' · live';

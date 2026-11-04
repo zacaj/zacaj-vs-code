@@ -21,7 +21,15 @@ can be plain TypeScript imported by workspace name. Simple extensions use the sh
 `scripts/build-extension.mjs` (`src/extension.ts` → `out/extension.js`). table-viewer has its own
 `esbuild.mjs` because it also builds a webview.
 
-`npm run package -w extensions/<name>` builds a `.vsix`. To debug, open the repo in VS Code and use
+`npm run package -w extensions/<name>` builds one extension's `.vsix`, and `npm run package` builds
+all of them.
+
+`npm run package:combined` builds `dist/zacaj-extensions.vsix`, a single extension containing all
+of them. `scripts/package-combined.mjs` merges every `contributes` section, takes the union of
+activation events and dependencies, and generates an entry point that calls each extension's
+`activate`. New extensions under `extensions/` are picked up automatically. The version is
+`1.0.<commit count>`, so every rebuild installs as an upgrade. Install either the combined
+extension or the individual ones, not both: they register the same commands. To debug, open the repo in VS Code and use
 the launch configs: one per extension, plus "Run all extensions".
 
 ### Adding an extension
