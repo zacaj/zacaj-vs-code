@@ -1,0 +1,202 @@
+{
+  "name": "zacaj-git",
+  "publisher": "local",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "toggleUntracked.hide",
+        "title": "Hide Untracked Files",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "toggleUntracked.show",
+        "title": "Show Untracked Files",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "gitignoreFolder.add",
+        "title": "Add Folder to .gitignore"
+      },
+      {
+        "command": "zacajGit.copyPath",
+        "title": "Copy Path"
+      },
+      {
+        "command": "zacajGit.copyRelativePath",
+        "title": "Copy Relative Path"
+      },
+      {
+        "command": "zacajGit.rename",
+        "title": "Rename..."
+      },
+      {
+        "command": "zacajGit.copyFolderPath",
+        "title": "Copy Path"
+      },
+      {
+        "command": "zacajGit.copyFolderRelativePath",
+        "title": "Copy Relative Path"
+      },
+      {
+        "command": "zacajGit.renameFolder",
+        "title": "Rename..."
+      },
+      {
+        "command": "zacajGit.untrack",
+        "title": "Untrack (Keep File)"
+      },
+      {
+        "command": "zacajGit.untrackIgnore",
+        "title": "Untrack and Add to .gitignore"
+      },
+      {
+        "command": "zacajGit.untrackFolder",
+        "title": "Untrack Folder (Keep Files)"
+      },
+      {
+        "command": "zacajGit.untrackIgnoreFolder",
+        "title": "Untrack Folder and Add to .gitignore"
+      },
+      {
+        "command": "zacajGit.gitignoreFile",
+        "title": "Add File to .gitignore"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "toggleUntracked.hide",
+          "when": "scmProvider == git && !untrackedHidden",
+          "group": "navigation"
+        },
+        {
+          "command": "toggleUntracked.show",
+          "when": "scmProvider == git && untrackedHidden",
+          "group": "navigation"
+        }
+      ],
+      "scm/resourceFolder/context": [
+        {
+          "command": "gitignoreFolder.add",
+          "when": "scmProvider == git",
+          "group": "1_modification"
+        },
+        {
+          "command": "zacajGit.copyFolderPath",
+          "when": "scmProvider == git",
+          "group": "6_copypath@1"
+        },
+        {
+          "command": "zacajGit.copyFolderRelativePath",
+          "when": "scmProvider == git",
+          "group": "6_copypath@2"
+        },
+        {
+          "command": "zacajGit.renameFolder",
+          "when": "scmProvider == git",
+          "group": "7_modification@1"
+        },
+        {
+          "command": "zacajGit.untrackFolder",
+          "when": "scmProvider == git && scmResourceGroup != untracked",
+          "group": "1_modification@90"
+        },
+        {
+          "command": "zacajGit.untrackIgnoreFolder",
+          "when": "scmProvider == git && scmResourceGroup != untracked",
+          "group": "1_modification@91"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "zacajGit.copyPath",
+          "when": "scmProvider == git",
+          "group": "6_copypath@1"
+        },
+        {
+          "command": "zacajGit.copyRelativePath",
+          "when": "scmProvider == git",
+          "group": "6_copypath@2"
+        },
+        {
+          "command": "zacajGit.rename",
+          "when": "scmProvider == git && !listMultiSelection",
+          "group": "7_modification@1"
+        },
+        {
+          "command": "zacajGit.untrack",
+          "when": "scmProvider == git && scmResourceGroup != untracked",
+          "group": "1_modification@90"
+        },
+        {
+          "command": "zacajGit.untrackIgnore",
+          "when": "scmProvider == git && scmResourceGroup != untracked",
+          "group": "1_modification@91"
+        },
+        {
+          "command": "zacajGit.gitignoreFile",
+          "when": "scmProvider == git",
+          "group": "1_modification@89"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "zacajGit.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.copyRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.rename",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.copyFolderPath",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.copyFolderRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.renameFolder",
+          "when": "false"
+        },
+        {
+          "command": "gitignoreFolder.add",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.untrack",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.untrackIgnore",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.untrackFolder",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.untrackIgnoreFolder",
+          "when": "false"
+        },
+        {
+          "command": "zacajGit.gitignoreFile",
+          "when": "false"
+        }
+      ]
+    }
+  }
+}
