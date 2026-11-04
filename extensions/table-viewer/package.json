@@ -1,0 +1,97 @@
+{
+  "name": "table-viewer",
+  "displayName": "Table Viewer (CSV / TSV / JSONL)",
+  "description": "Fast, filterable, live-updating table view for CSV, TSV and JSON Lines files",
+  "version": "0.1.0",
+  "publisher": "zacaj",
+  "license": "MIT",
+  "private": true,
+  "repository": { "type": "git", "url": "https://github.com/zacaj/zacaj-vs-code" },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Data Science", "Visualization", "Other"],
+  "keywords": ["csv", "tsv", "jsonl", "ndjson", "table", "log", "viewer"],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "zacaj.tableViewer",
+        "displayName": "Table Viewer",
+        "priority": "option",
+        "selector": [
+          { "filenamePattern": "*.csv" },
+          { "filenamePattern": "*.tsv" },
+          { "filenamePattern": "*.tab" },
+          { "filenamePattern": "*.psv" },
+          { "filenamePattern": "*.jsonl" },
+          { "filenamePattern": "*.ndjson" }
+        ]
+      }
+    ],
+    "commands": [
+      { "command": "tableViewer.open", "title": "Open in Table Viewer", "category": "Table Viewer", "icon": "$(table)" },
+      { "command": "tableViewer.openAsText", "title": "Reopen as Text", "category": "Table Viewer", "icon": "$(go-to-file)" }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "tableViewer.open",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|tab|psv|jsonl|ndjson)$/i && activeCustomEditorId != 'zacaj.tableViewer'",
+          "group": "navigation"
+        },
+        {
+          "command": "tableViewer.openAsText",
+          "when": "activeCustomEditorId == 'zacaj.tableViewer'",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "tableViewer.open",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|tab|psv|jsonl|ndjson)$/i",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Table Viewer",
+      "properties": {
+        "tableViewer.csv.hasHeader": {
+          "type": "boolean",
+          "default": true,
+          "description": "Treat the first record of CSV/TSV files as column names."
+        },
+        "tableViewer.csv.delimiter": {
+          "type": "string",
+          "default": "auto",
+          "description": "Delimiter for .csv files: 'auto' sniffs the first line (, ; | tab). .tsv/.tab always use tab, .psv uses |."
+        },
+        "tableViewer.jsonl.flattenDepth": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "description": "How many levels of nested objects in JSON Lines rows to flatten into dotted columns (a.b.c). Deeper values are shown as JSON."
+        },
+        "tableViewer.live": {
+          "type": "boolean",
+          "default": true,
+          "description": "Watch files on disk and stream appended rows into the view."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/webview/tsconfig.json",
+    "test": "node esbuild.mjs --tests && node --test out/test/*.test.js",
+    "package": "node esbuild.mjs --production && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "~1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  }
+}

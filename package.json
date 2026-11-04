@@ -1,0 +1,14 @@
+{
+  "name": "zacaj-vs-code",
+  "private": true,
+  "description": "Monorepo for zacaj's VS Code extensions and shared packages",
+  "workspaces": [
+    "packages/*",
+    "extensions/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present"
+  }
+}

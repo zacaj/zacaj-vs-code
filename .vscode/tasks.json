@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "table-viewer: watch",
+      "type": "npm",
+      "script": "watch",
+      "path": "extensions/table-viewer",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "esbuild",
+        "pattern": { "regexp": "^✘ \\[ERROR\\] (.*)$", "message": 1 },
+        "background": { "activesBegin": "^\\[watch\\] build started", "endsPattern": "^\\[watch\\] build finished" }
+      }
+    }
+  ]
+}

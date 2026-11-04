@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Table Viewer",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/extensions/table-viewer"],
+      "outFiles": ["${workspaceFolder}/extensions/table-viewer/out/**/*.js"],
+      "preLaunchTask": "table-viewer: watch"
+    }
+  ]
+}
