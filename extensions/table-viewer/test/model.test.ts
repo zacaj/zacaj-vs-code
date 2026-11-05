@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeView, facet, parseDate, parseDateInput, Table, compileColumnText } from '../src/webview/model';
+import { computeView, facet, parseDate, parseDateInput, parseSearchTerms, highlightRegex, Table, compileColumnText } from '../src/webview/model';
 
 function mk() {
   const t = new Table();
@@ -77,4 +77,33 @@ test('date parsing helpers', () => {
   assert.equal(parseDateInput('-1h', 10_000_000), 10_000_000 - 3_600_000);
   assert.ok(isNaN(parseDateInput('garbage')));
   assert.equal(compileColumnText('/[/')!('x'), false);
+});
+
+test('global search terms: AND across columns, -exclude, escapes', () => {
+  const t = mk();
+  const g = (text: string, extra = {}) => computeView(t, { filters: new Map(), global: { text, ...extra } });
+  assert.deepEqual(g('info 2024-01-01'), [0]); // terms in different columns
+  assert.deepEqual(g('info -2024-01-01'), [3]);
+  assert.deepEqual(g('-info'), [1, 2]);
+  assert.deepEqual(g('-info -warn'), [2]);
+  assert.deepEqual(g('  info   '), [0, 3]);
+  assert.deepEqual(g('/^(warn|error)$/ -error', { regex: true }), []); // regex term isn't /…/-wrapped
+  assert.deepEqual(g('^(warn|error)$ -^error$', { regex: true }), [1]);
+  assert.deepEqual(g('\\-3'), [3]); // literal leading minus
+  assert.deepEqual(g('-'), [0, 1, 2, 3]); // lone "-" is literal, not "exclude nothing"
+  assert.deepEqual(g('-2024'), [3]);
+});
+
+test('parseSearchTerms', () => {
+  assert.deepEqual(parseSearchTerms('a -b c\\ d \\-e x\\-y \\d+'), [
+    { text: 'a', negate: false },
+    { text: 'b', negate: true },
+    { text: 'c d', negate: false },
+    { text: '-e', negate: false },
+    { text: 'x\\-y', negate: false },
+    { text: '\\d+', negate: false },
+  ]);
+  assert.deepEqual(parseSearchTerms('-\\ x'), [{ text: ' x', negate: true }]);
+  assert.deepEqual(parseSearchTerms(''), []);
+  assert.equal(highlightRegex({ text: 'a -b c' })!.source, 'a|c');
 });

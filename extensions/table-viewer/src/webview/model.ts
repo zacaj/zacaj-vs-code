@@ -223,16 +223,66 @@ export function compileColumnText(q: string): Matcher | null {
   return neg ? (s) => !m(s) : m;
 }
 
-export function compileGlobal(q: TextQuery): RegExp | string | null {
-  if (!q.text) return null;
-  if (q.regex) {
-    try {
-      return new RegExp(q.text, q.caseSensitive ? '' : 'i');
-    } catch {
-      return null;
+export interface SearchTerm {
+  text: string;
+  negate: boolean;
+}
+
+/**
+ * Split global search text into terms. Unescaped spaces separate terms (all must match, each in
+ * any column); a leading `-` excludes rows containing the term. `\ ` is a literal space and a
+ * leading `\-` a literal minus; any other backslash is kept as-is (so regex escapes like `\d` work).
+ */
+export function parseSearchTerms(text: string): SearchTerm[] {
+  const terms: SearchTerm[] = [];
+  let cur = '';
+  let negate = false;
+  let started = false; // current term has any content (incl. an escaped leading '-')
+  const flush = () => {
+    if (started && (cur || !negate)) terms.push({ text: cur, negate });
+    else if (negate) terms.push({ text: '-', negate: false }); // a lone "-" searches for "-"
+    cur = '';
+    negate = false;
+    started = false;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '\\' && next === ' ') {
+      cur += ' ';
+      started = true;
+      i++;
+    } else if (ch === '\\' && next === '-' && !started && !negate) {
+      cur += '-';
+      started = true;
+      i++;
+    } else if (ch === ' ') {
+      if (started || negate) flush();
+    } else if (ch === '-' && !started && !negate) {
+      negate = true;
+    } else {
+      cur += ch;
+      started = true;
     }
   }
-  return q.caseSensitive ? q.text : q.text.toLowerCase();
+  if (started || negate) flush();
+  return terms.filter((t) => t.text);
+}
+
+type TermMatcher = { negate: boolean; re?: RegExp; str?: string };
+
+function compileTerms(q: TextQuery): TermMatcher[] {
+  const out: TermMatcher[] = [];
+  for (const t of parseSearchTerms(q.text)) {
+    if (q.regex) {
+      try {
+        out.push({ negate: t.negate, re: new RegExp(t.text, q.caseSensitive ? '' : 'i') });
+      } catch {
+        /* incomplete/invalid regex term: ignore it while typing */
+      }
+    } else out.push({ negate: t.negate, str: q.caseSensitive ? t.text : t.text.toLowerCase() });
+  }
+  return out;
 }
 
 /** RegExp (global) used for highlighting matches inside cells. */
@@ -251,12 +301,18 @@ export function highlightRegex(q: TextQuery | string | undefined): RegExp | null
     }
     return new RegExp(escapeRe(t), 'gi');
   }
-  if (!q.text) return null;
-  try {
-    return new RegExp(q.regex ? q.text : escapeRe(q.text), q.caseSensitive ? 'g' : 'gi');
-  } catch {
-    return null;
-  }
+  const pos = parseSearchTerms(q.text)
+    .filter((t) => !t.negate)
+    .map((t) => (q.regex ? t.text : escapeRe(t.text)))
+    .filter((src) => {
+      try {
+        new RegExp(src);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  return pos.length ? new RegExp(pos.join('|'), q.caseSensitive ? 'g' : 'gi') : null;
 }
 
 export function escapeRe(s: string) {
@@ -303,11 +359,21 @@ export function compileQuery(table: Table, q: ViewQuery, exceptCol = -1): RowPre
     if (col === exceptCol || !isFilterActive(f)) continue;
     preds.push(...compileColumnFilter(table, col, f, now));
   }
-  const g = q.global ? compileGlobal(q.global) : null;
-  if (typeof g === 'string') {
-    if (q.global!.caseSensitive) preds.push((r) => table.rows[r].some((c) => c.includes(g)));
-    else preds.push((r) => table.lowerRow(r).includes(g));
-  } else if (g) preds.push((r) => table.rows[r].some((c) => g.test(c)));
+  // Global search: every term must match (or, for -terms, must not match) somewhere in the row.
+  if (q.global?.text) {
+    const cs = !!q.global.caseSensitive;
+    for (const t of compileTerms(q.global)) {
+      let hit: RowPred;
+      if (t.re) {
+        const re = t.re;
+        hit = (r) => table.rows[r].some((c) => re.test(c));
+      } else {
+        const str = t.str!;
+        hit = cs ? (r) => table.rows[r].some((c) => c.includes(str)) : (r) => table.lowerRow(r).includes(str);
+      }
+      preds.push(t.negate ? (r) => !hit(r) : hit);
+    }
+  }
   if (!preds.length) return () => true;
   if (preds.length === 1) return preds[0];
   return (r) => {

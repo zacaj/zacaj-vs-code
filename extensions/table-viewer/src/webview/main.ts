@@ -340,7 +340,7 @@ function selectCell(r: number, c: number) {
 
 // ------------------------------------------------------------------ toolbar & status
 
-const searchInput = h('input', { class: 'search', type: 'text', placeholder: 'Search all columns…', spellcheck: false });
+const searchInput = h('input', { class: 'search', type: 'text', placeholder: 'Search all columns…  (a b = both, -x excludes)', spellcheck: false, title: 'Space-separated terms must all match (each in any column).\n-term excludes rows containing it.\nEscape with \\  (backslash space) for a literal space, or \\- for a leading minus.' });
 const caseBtn = h('button', { class: 'toggle', title: 'Match case' }, 'Aa');
 const regexBtn = h('button', { class: 'toggle', title: 'Use regular expression' }, '.*');
 const clearBtn = h('button', { class: 'btn', title: 'Clear all filters and search' }, 'Clear filters');

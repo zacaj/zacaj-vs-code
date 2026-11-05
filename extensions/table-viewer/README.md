@@ -25,7 +25,11 @@ add this to your settings:
   **Follow** keeps the view scrolled to the newest rows; scrolling up turns it off, and scrolling
   back to the bottom turns it on again.
 - **Global search** (`Ctrl/Cmd+F`) across all columns, with match-case and regex toggles. Matches
-  are highlighted.
+  are highlighted. Spaces separate terms, and every term must match somewhere in the row, possibly in
+  different columns: `error api` finds rows with "error" in one column and "api" in another. A
+  leading `-` excludes rows containing the term (`error -timeout`). Use `\ ` (backslash space) for a
+  literal space (`connection\ reset`) and a leading `\-` for a literal minus (`\-1`). In regex mode
+  each term is its own regex, and other backslashes are kept (`\d+` still works).
 - **Per-column filters** (the funnel icon in each header):
   - **Text**: `foo` contains, `=foo` exact, `!foo` does not contain, `/re/` regex, `""` empty, `!""` not empty.
   - **Values**: a checklist of distinct values with counts, Excel-style. Counts reflect the
