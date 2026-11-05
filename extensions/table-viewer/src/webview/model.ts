@@ -448,3 +448,54 @@ export function columnRange(table: Table, col: number): { min: number; max: numb
   }
   return min <= max ? { min, max } : null;
 }
+
+// ---------------------------------------------------------------- column name matching
+
+export interface NameMatch {
+  score: number;
+  /** Indices of matched characters in the name, for highlighting. */
+  hits: number[];
+}
+
+const isBoundary = (name: string, i: number) =>
+  i === 0 || /[^a-z0-9]/i.test(name[i - 1]) || (/[a-z]/.test(name[i - 1]) && /[A-Z]/.test(name[i]));
+
+/**
+ * Match a column name against a query: exact > prefix > substring at a word start > substring >
+ * fuzzy (characters in order; spaces in the query are ignored). Case-insensitive. null = no match.
+ */
+export function matchName(name: string, query: string): NameMatch | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return { score: 0, hits: [] };
+  const n = name.toLowerCase();
+  const idx = n.indexOf(q);
+  if (idx >= 0) {
+    let score = 1000 - idx - (n.length - q.length) * 0.5;
+    if (n === q) score += 3000;
+    else if (idx === 0) score += 1000;
+    else if (isBoundary(name, idx)) score += 500;
+    return { score, hits: Array.from({ length: q.length }, (_, i) => idx + i) };
+  }
+  // Fuzzy: greedy, preferring word-boundary characters.
+  const chars = q.replace(/\s+/g, '');
+  const hits: number[] = [];
+  let score = 0;
+  let from = 0;
+  for (const ch of chars) {
+    let pick = -1;
+    for (let i = from; i < n.length; i++) {
+      if (n[i] !== ch) continue;
+      if (pick < 0) pick = i;
+      if (isBoundary(name, i)) {
+        pick = i;
+        break;
+      }
+      if (i === from) break; // adjacent char: take it
+    }
+    if (pick < 0) return null;
+    score += isBoundary(name, pick) ? 10 : pick === from ? 5 : -Math.min(pick - from, 10);
+    hits.push(pick);
+    from = pick + 1;
+  }
+  return { score, hits };
+}

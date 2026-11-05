@@ -7,6 +7,7 @@ import {
   facet,
   highlightRegex,
   isFilterActive,
+  matchName,
   Table,
   type ColumnFilter,
   type TextQuery,
@@ -452,6 +453,141 @@ function refreshChrome() {
   status.textContent = s;
   status.classList.toggle('error', statusErr);
   status.title = `${fileName} (${format === 'jsonl' ? 'JSON Lines' : 'delimited'})`;
+}
+
+// ------------------------------------------------------------------ go to column
+
+const isMac = navigator.platform.toLowerCase().includes('mac');
+const colSearch = h('input', {
+  class: 'search colsearch',
+  type: 'text',
+  placeholder: `Go to column… (${isMac ? '⇧⌘O' : 'Ctrl+Shift+O'})`,
+  spellcheck: false,
+  title: 'Type part of a column name (fuzzy). ↑/↓ preview, Enter or click to go, Esc to go back.',
+});
+const colDrop = h('div', { class: 'popup coldrop' });
+colDrop.style.display = 'none';
+let colMatches: { c: number; hits: number[] }[] = [];
+let colActive = 0;
+let colSavedLeft: number | null = null;
+
+function openColSearch() {
+  if (colSavedLeft === null) colSavedLeft = grid.el.scrollLeft;
+  colDrop.style.display = '';
+  updateColSearch();
+}
+
+function closeColSearch() {
+  colDrop.style.display = 'none';
+  colSavedLeft = null;
+  colSearch.value = '';
+}
+
+function updateColSearch() {
+  const q = colSearch.value;
+  // Listed in display order (visible first, then hidden) when empty; by match quality otherwise.
+  const pool = [...visibleCols(), ...order.filter((c) => hidden.has(c))];
+  const ms: { c: number; hits: number[]; score: number }[] = [];
+  for (const c of pool) {
+    const m = matchName(table.columns[c].name, q);
+    if (m) ms.push({ c, ...m });
+  }
+  if (q.trim()) ms.sort((a, b) => b.score - a.score); // stable: ties keep display order
+  colMatches = ms.slice(0, 200);
+  colActive = 0;
+  renderColDrop();
+  previewCol();
+}
+
+function renderColDrop() {
+  if (!colMatches.length) {
+    colDrop.replaceChildren(h('div', { class: 'cd-empty muted' }, 'No matching columns'));
+    return;
+  }
+  colDrop.innerHTML = colMatches
+    .map(({ c, hits }, i) => {
+      const name = table.columns[c].name;
+      const hs = new Set(hits);
+      let label = '';
+      for (let k = 0; k < name.length; k++) label += hs.has(k) ? `<b>${escHtml(name[k])}</b>` : escHtml(name[k]);
+      const flags = (hidden.has(c) ? '<span class="cd-flag">hidden</span>' : '') + (pinned.has(c) ? '<span class="cd-flag">pinned</span>' : '');
+      return `<div class="cd-item${i === colActive ? ' active' : ''}" data-i="${i}"><span class="htype t-${table.columns[c].type}"></span><span class="cd-name">${label}</span>${flags}</div>`;
+    })
+    .join('');
+  colDrop.querySelector('.cd-item.active')?.scrollIntoView({ block: 'nearest' });
+}
+
+function escHtml(ch: string) {
+  return ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '&' ? '&amp;' : ch === '"' ? '&quot;' : ch;
+}
+
+/** Scroll the grid to the highlighted match while browsing (hidden columns can't be previewed). */
+function previewCol() {
+  const m = colMatches[colActive];
+  if (!m) return grid.flash(-1, true);
+  if (!hidden.has(m.c)) {
+    grid.scrollToColumn(m.c);
+    grid.flash(m.c, true);
+  } else grid.flash(-1, true);
+}
+
+function commitCol(i: number) {
+  const m = colMatches[i];
+  if (!m) return;
+  closeColSearch();
+  if (hidden.has(m.c)) setHidden([m.c], false);
+  requestAnimationFrame(() => {
+    grid.scrollToColumn(m.c);
+    grid.flash(m.c);
+    if (grid.selRow >= 0) selectCell(grid.selRow, m.c);
+    grid.el.focus();
+  });
+}
+
+function cancelColSearch() {
+  const left = colSavedLeft;
+  closeColSearch();
+  grid.flash(-1, true);
+  if (left !== null) grid.scrollTo(left, undefined);
+  grid.el.focus();
+}
+
+colSearch.addEventListener('focus', openColSearch);
+colSearch.addEventListener('input', updateColSearch);
+colSearch.addEventListener('blur', () => {
+  // Clicking elsewhere keeps the current position.
+  if (colSavedLeft !== null) {
+    closeColSearch();
+    grid.flash(-1, true);
+  }
+});
+colSearch.addEventListener('keydown', (e) => {
+  const n = colMatches.length;
+  const move = (d: number) => {
+    if (!n) return;
+    colActive = (colActive + d + n) % n;
+    renderColDrop();
+    previewCol();
+  };
+  if (e.key === 'ArrowDown') move(1);
+  else if (e.key === 'ArrowUp') move(-1);
+  else if (e.key === 'PageDown') move(Math.min(10, n - 1 - colActive) || 0);
+  else if (e.key === 'PageUp') move(-Math.min(10, colActive) || 0);
+  else if (e.key === 'Enter') commitCol(colActive);
+  else if (e.key === 'Escape') cancelColSearch();
+  else return;
+  e.preventDefault();
+  e.stopPropagation();
+});
+colDrop.addEventListener('mousedown', (e) => {
+  e.preventDefault(); // keep focus in the input
+  const it = (e.target as HTMLElement).closest<HTMLElement>('.cd-item');
+  if (it) commitCol(Number(it.dataset.i));
+});
+
+function focusColumnSearch() {
+  colSearch.focus();
+  colSearch.select();
 }
 
 // ------------------------------------------------------------------ side panel (columns / details)
@@ -1049,7 +1185,11 @@ grid.el.addEventListener('keydown', (e) => {
 
 window.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key.toLowerCase() === 'f') {
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'o') {
+    // Normally handled by the tableViewer.goToColumn keybinding; this covers the webview having focus first.
+    e.preventDefault();
+    focusColumnSearch();
+  } else if (mod && e.key.toLowerCase() === 'f') {
     e.preventDefault();
     searchInput.focus();
     searchInput.select();
@@ -1101,6 +1241,9 @@ function handleMessage(m: HostMessage) {
       statusErr = false;
       onRows(m);
       break;
+    case 'focusColumnSearch':
+      focusColumnSearch();
+      break;
     case 'status':
       statusMsg = m.message;
       statusErr = !!m.error;
@@ -1121,6 +1264,7 @@ document.body.append(
       'div',
       { class: 'toolbar' },
       h('div', { class: 'searchbox' }, searchInput, caseBtn, regexBtn),
+      h('div', { class: 'colsearch-wrap' }, colSearch, colDrop),
       clearBtn,
       colsBtn,
       detailsBtn,

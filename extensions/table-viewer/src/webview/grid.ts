@@ -177,7 +177,7 @@ export class Grid {
   private headerCell(c: GridCol, x: number): string {
     const sort = c.sort ? `<span class="sort">${c.sort > 0 ? ICON.up : ICON.down}</span>` : '';
     return (
-      `<div class="hcell${c.filtered ? ' filtered' : ''}${c.pinned ? ' pinned' : ''}" data-c="${c.col}" style="left:${x}px;width:${c.width}px" title="${esc(c.name)} (${c.typeLabel})&#10;Click: sort · Drag: move · Right-click: more">` +
+      `<div class="hcell${c.filtered ? ' filtered' : ''}${c.pinned ? ' pinned' : ''}${c.col === this.flashCol ? ' flash' : ''}" data-c="${c.col}" style="left:${x}px;width:${c.width}px" title="${esc(c.name)} (${c.typeLabel})&#10;Click: sort · Drag: move · Right-click: more">` +
       `<span class="htype t-${c.typeLabel}"></span><span class="hname">${esc(c.name)}</span>${sort}` +
       `<span class="fbtn" title="Filter">${ICON.filter}</span><div class="resizer"></div></div>`
     );
@@ -327,6 +327,28 @@ export class Grid {
       if (x0 < el.scrollLeft) this.scrollTo(x0, undefined);
       else if (x1 > el.scrollLeft + vw) this.scrollTo(Math.min(x0, x1 - vw), undefined);
     }
+  }
+
+  /** Scroll horizontally so `col` is in view (centred if it wasn't fully visible). */
+  scrollToColumn(col: number) {
+    const j = this.scrolled.findIndex((c) => c.col === col);
+    if (j < 0) return; // pinned or hidden: nothing to scroll
+    const vw = this.el.clientWidth - this.pinW;
+    const x0 = this.xs[j];
+    const x1 = this.xs[j + 1];
+    if (x0 >= this.el.scrollLeft && x1 <= this.el.scrollLeft + vw) return;
+    this.scrollTo(Math.max(0, (x0 + x1) / 2 - vw / 2), undefined);
+  }
+
+  private flashCol = -1;
+  private flashTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Briefly highlight a column's header (and keep it highlighted while `sticky`). */
+  flash(col: number, sticky = false) {
+    clearTimeout(this.flashTimer);
+    this.flashCol = col;
+    this.headerKey = '';
+    this.schedule();
+    if (!sticky) this.flashTimer = setTimeout(() => this.flash(-1, true), 1200);
   }
 
   scrollTo(left?: number, top?: number) {

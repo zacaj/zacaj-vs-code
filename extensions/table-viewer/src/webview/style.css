@@ -162,3 +162,17 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .mi:hover { background: var(--vscode-menu-selectionBackground, var(--cur-bg)); color: var(--vscode-menu-selectionForeground, var(--cur-fg)); }
 .mi.disabled { opacity: 0.45; pointer-events: none; }
 .sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+/* ---------------------------------------------------------------- go to column */
+.colsearch-wrap { position: relative; }
+.colsearch { width: 200px; }
+.coldrop { position: absolute; top: calc(100% + 2px); left: 0; width: 360px; max-height: 60vh; overflow: auto; padding: 3px 0; }
+.cd-item { display: flex; align-items: center; gap: 6px; padding: 2px 10px; cursor: pointer; white-space: nowrap; }
+.cd-item:hover { background: var(--hover-bg); }
+.cd-item.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.cd-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.cd-name b { color: var(--vscode-list-highlightForeground, var(--accent)); font-weight: 700; }
+.cd-item.active .cd-name b { color: inherit; text-decoration: underline; }
+.cd-flag { font-size: 0.8em; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
+.cd-empty { padding: 4px 10px; }
+.hcell.flash { background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)); }

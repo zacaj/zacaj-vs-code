@@ -14,6 +14,15 @@ const READY_TIMEOUT_MS = 10_000;
 
 export class TableEditorProvider implements vscode.CustomReadonlyEditorProvider {
   static activeUri: vscode.Uri | undefined;
+  private static activePanel: vscode.WebviewPanel | undefined;
+
+  /** Send a message to the focused table viewer, if any. */
+  static postToActive(m: HostMessage): boolean {
+    const p = TableEditorProvider.activePanel;
+    if (!p?.active) return false;
+    void p.webview.postMessage(m);
+    return true;
+  }
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -34,7 +43,10 @@ export class TableEditorProvider implements vscode.CustomReadonlyEditorProvider 
       throw e;
     }
     const track = () => {
-      if (panel.active) TableEditorProvider.activeUri = doc.uri;
+      if (panel.active) {
+        TableEditorProvider.activeUri = doc.uri;
+        TableEditorProvider.activePanel = panel;
+      }
     };
     track();
     panel.onDidChangeViewState(track);

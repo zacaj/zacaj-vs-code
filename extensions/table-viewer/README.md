@@ -30,6 +30,17 @@ add this to your settings:
   leading `-` excludes rows containing the term (`error -timeout`). Use `\ ` (backslash space) for a
   literal space (`connection\ reset`) and a leading `\-` for a literal minus (`\-1`). In regex mode
   each term is its own regex, and other backslashes are kept (`\d+` still works).
+- **Go to column** (`Ctrl+Shift+O` / `⇧⌘O`, the same key as VS Code's "Go to Symbol in Editor",
+  or the box in the toolbar): type part of a column name. Matching is fuzzy: `rqun` finds
+  `request.user.name`. Exact, prefix and word-start matches rank first, and hidden columns are
+  listed too (marked). ↑/↓ scrolls the grid to each match as you go. Enter or click jumps there
+  (showing the column if it was hidden, and moving the selected cell into it). Esc goes back to
+  where you were. To use a different key, e.g. if your Ctrl+O is "Go to Symbol", add this to
+  `keybindings.json` (it only applies while a table viewer is focused):
+
+  ```jsonc
+  { "key": "ctrl+o", "command": "tableViewer.goToColumn", "when": "activeCustomEditorId == 'zacaj.tableViewer'" }
+  ```
 - **Per-column filters** (the funnel icon in each header):
   - **Text**: `foo` contains, `=foo` exact, `!foo` does not contain, `/re/` regex, `""` empty, `!""` not empty.
   - **Values**: a checklist of distinct values with counts, Excel-style. Counts reflect the
@@ -64,7 +75,8 @@ add this to your settings:
   buttons. This is the easy way to read a 150-column row.
 - **Cell context menu**: copy value, copy row as TSV/JSON, filter to or exclude a value, hide the
   column.
-- **Keyboard**: arrows, PageUp/PageDown, Home/End, Ctrl+Home/Ctrl+End, `Ctrl+C` copies the cell.
+- **Keyboard**: arrows, PageUp/PageDown, Home/End, Ctrl+Home/Ctrl+End, `Ctrl+C` copies the cell,
+  `Ctrl+F` focuses search, `Ctrl+Shift+O` goes to a column.
 - **Per-file layout memory**: column order, visibility, pins, widths, type overrides and sort are
   saved per file (workspace state), keyed by column name. Filters are not saved.
 

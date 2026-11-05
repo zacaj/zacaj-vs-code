@@ -27,7 +27,8 @@ export type HostMessage =
       /** Final batch of the current read. */
       done: boolean;
     }
-  | { type: 'status'; message: string; error?: boolean };
+  | { type: 'status'; message: string; error?: boolean }
+  | { type: 'focusColumnSearch' };
 
 export type WebviewMessage =
   | { type: 'ready' }

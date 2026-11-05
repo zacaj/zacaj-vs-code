@@ -13,6 +13,9 @@ export function activate(context: vscode.ExtensionContext) {
       uri ??= vscode.window.activeTextEditor?.document.uri;
       if (uri) return vscode.commands.executeCommand('vscode.openWith', uri, VIEW_TYPE);
     }),
+    vscode.commands.registerCommand('tableViewer.goToColumn', () => {
+      TableEditorProvider.postToActive({ type: 'focusColumnSearch' });
+    }),
     vscode.commands.registerCommand('tableViewer.openAsText', (uri?: vscode.Uri) => {
       uri ??= TableEditorProvider.activeUri;
       if (uri) return vscode.commands.executeCommand('vscode.openWith', uri, 'default');

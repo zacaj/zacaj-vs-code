@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeView, facet, parseDate, parseDateInput, parseSearchTerms, highlightRegex, Table, compileColumnText } from '../src/webview/model';
+import { computeView, facet, parseDate, parseDateInput, parseSearchTerms, highlightRegex, matchName, Table, compileColumnText } from '../src/webview/model';
 
 function mk() {
   const t = new Table();
@@ -106,4 +106,21 @@ test('parseSearchTerms', () => {
   assert.deepEqual(parseSearchTerms('-\\ x'), [{ text: ' x', negate: true }]);
   assert.deepEqual(parseSearchTerms(''), []);
   assert.equal(highlightRegex({ text: 'a -b c' })!.source, 'a|c');
+});
+
+test('matchName ranking', () => {
+  const names = ['user_id', 'id', 'request.user.name', 'userAgent', 'paid_amount', 'session_uid'];
+  const rank = (q: string) =>
+    names
+      .map((n) => ({ n, m: matchName(n, q) }))
+      .filter((x) => x.m)
+      .sort((a, b) => b.m!.score - a.m!.score)
+      .map((x) => x.n);
+  assert.deepEqual(rank('id').slice(0, 2), ['id', 'user_id']); // exact, then word start, then mid-word substrings
+  assert.deepEqual(rank('id').slice(2).sort(), ['paid_amount', 'session_uid']);
+  assert.deepEqual(rank('user')[0], 'user_id'); // prefix beats mid-word
+  assert.deepEqual(rank('rqun'), ['request.user.name']); // fuzzy
+  assert.deepEqual(rank('user name'), ['request.user.name']); // spaces ignored in fuzzy
+  assert.deepEqual(matchName('userAgent', 'ua')!.hits, [0, 4]); // camelCase boundary
+  assert.equal(matchName('abc', 'x'), null);
 });

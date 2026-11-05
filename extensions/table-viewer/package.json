@@ -30,7 +30,16 @@
     ],
     "commands": [
       { "command": "tableViewer.open", "title": "Open in Table Viewer", "category": "Table Viewer", "icon": "$(table)" },
-      { "command": "tableViewer.openAsText", "title": "Reopen as Text", "category": "Table Viewer", "icon": "$(go-to-file)" }
+      { "command": "tableViewer.openAsText", "title": "Reopen as Text", "category": "Table Viewer", "icon": "$(go-to-file)" },
+      { "command": "tableViewer.goToColumn", "title": "Go to Column…", "category": "Table Viewer" }
+    ],
+    "keybindings": [
+      {
+        "command": "tableViewer.goToColumn",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o",
+        "when": "activeCustomEditorId == 'zacaj.tableViewer'"
+      }
     ],
     "menus": {
       "editor/title": [
@@ -44,6 +53,9 @@
           "when": "activeCustomEditorId == 'zacaj.tableViewer'",
           "group": "navigation"
         }
+      ],
+      "commandPalette": [
+        { "command": "tableViewer.goToColumn", "when": "activeCustomEditorId == 'zacaj.tableViewer'" }
       ],
       "explorer/context": [
         {
