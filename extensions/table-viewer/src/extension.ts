@@ -1,11 +1,14 @@
 import * as vscode from 'vscode';
 import { TableEditorProvider, VIEW_TYPE } from './host/provider';
+import { TextTracker } from './host/textTracker';
 
 export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel('Table Viewer', { log: true });
+  const tracker = new TextTracker();
   context.subscriptions.push(
     log,
-    vscode.window.registerCustomEditorProvider(VIEW_TYPE, new TableEditorProvider(context, log), {
+    tracker,
+    vscode.window.registerCustomEditorProvider(VIEW_TYPE, new TableEditorProvider(context, log, tracker), {
       webviewOptions: { retainContextWhenHidden: true },
       supportsMultipleEditorsPerDocument: true,
     }),

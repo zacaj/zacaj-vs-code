@@ -3,6 +3,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Format, HostMessage, Layout, WebviewMessage } from '../shared/protocol';
 import { LiveReader, parseWhole, type ReadBatch } from './liveReader';
+import { cellAt, locateCell } from './locate';
+import type { TextSnapshot, TextTracker } from './textTracker';
 import { sniffDelimiter } from './parse';
 import type { BuilderOptions } from './tableBuilder';
 
@@ -27,6 +29,7 @@ export class TableEditorProvider implements vscode.CustomReadonlyEditorProvider 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly log: vscode.LogOutputChannel,
+    private readonly tracker: TextTracker,
   ) {}
 
   openCustomDocument(uri: vscode.Uri): vscode.CustomDocument {
@@ -38,6 +41,14 @@ export class TableEditorProvider implements vscode.CustomReadonlyEditorProvider 
     let session: EditorSession;
     try {
       session = new EditorSession(this.context, doc.uri, panel, this.log);
+      // Coming from the text editor for this file (just switched, or opened from it): go to the cursor's cell.
+      const fromText = (snap: TextSnapshot | undefined) => {
+        if (panel.active && snap && snap.uri === doc.uri.toString() && Date.now() - snap.time < 2000) session.syncFromText(snap);
+      };
+      fromText(this.tracker.last);
+      panel.onDidChangeViewState(() => fromText(this.tracker.last));
+      const sub = this.tracker.onDidLeave(fromText);
+      panel.onDidDispose(() => sub.dispose());
     } catch (e) {
       this.log.error(`failed to create editor: ${(e as Error).stack ?? e}`);
       throw e;
@@ -71,6 +82,10 @@ class EditorSession {
   private lastColumnCount = 0;
   private readyTimer: NodeJS.Timeout | undefined;
   private firstRead = true;
+  private opts: BuilderOptions | undefined;
+  private loaded = false;
+  private pendingSync: TextSnapshot | undefined;
+  private lastSync: TextSnapshot | undefined;
   private readonly format: Format;
   private readonly live: boolean;
   private readonly layoutKey: string;
@@ -130,6 +145,9 @@ class EditorSession {
       case 'openAsText':
         await vscode.commands.executeCommand('vscode.openWith', this.uri, 'default');
         break;
+      case 'editCell':
+        await this.editCell(m.row, m.col, m.colName);
+        break;
       case 'reload':
         this.stop();
         await this.start();
@@ -179,19 +197,24 @@ class EditorSession {
     this.post({ type: 'reset', fileName: path.basename(this.uri.path), format: this.format, live: this.live, layout, maxColumnWidth: this.maxColumnWidth() });
     try {
       const opts = await this.options();
+      this.opts = opts;
+      this.loaded = false;
       this.log.info(
         `${this.name()}: format=${opts.format} delimiter=${JSON.stringify(opts.delimiter)} quotes=${opts.quotes} header=${opts.hasHeader} live=${this.live} scheme=${this.uri.scheme}`,
       );
       if (this.uri.scheme === 'file') {
         this.reader = new LiveReader(this.uri.fsPath, opts);
         await this.readNow();
+        this.loaded = true;
         if (this.live) this.watch();
       } else {
         const data = await vscode.workspace.fs.readFile(this.uri);
         const batch = parseWhole(data, opts);
         this.log.info(`${this.name()}: read ${batch.rows.length} rows, ${batch.columns.length} columns`);
         this.send(batch, true);
+        this.loaded = true;
       }
+      if (this.pendingSync) this.syncFromText(this.pendingSync);
     } catch (e) {
       this.log.error(`${this.name()}: start failed: ${(e as Error).stack ?? e}`);
       this.post({ type: 'status', message: `Failed to read file: ${(e as Error).message}`, error: true });
@@ -256,7 +279,7 @@ class EditorSession {
     if (batch.reset && !initialStatic) {
       const layout = this.context.workspaceState.get<Layout>(this.layoutKey);
       this.lastColumnCount = 0;
-      this.post({ type: 'reset', fileName: path.basename(this.uri.path), format: this.format, live: this.live, layout, maxColumnWidth: this.maxColumnWidth() });
+      this.post({ type: 'reset', fileName: path.basename(this.uri.path), format: this.format, live: this.live, layout, maxColumnWidth: this.maxColumnWidth(), reload: true });
     }
     const { rows, columns } = batch;
     const width = Math.max(1, columns.length);
@@ -277,6 +300,47 @@ class EditorSession {
         done,
       });
     } while (i < rows.length);
+  }
+
+  /** Open the file as text with the given cell's content selected. */
+  private async editCell(row: number, col: number, colName: string) {
+    if (!this.opts) return;
+    const doc = await vscode.workspace.openTextDocument(this.uri);
+    const r = locateCell(doc.getText(), this.opts, { row, col, colName });
+    if (!r) {
+      void vscode.window.showWarningMessage(`Table Viewer: couldn't find row ${row + 1} in the text (has the file changed?).`);
+      this.log.warn(`${this.name()}: editCell row=${row} col=${colName} not found`);
+    }
+    const sel = r ? new vscode.Selection(doc.positionAt(r.start), doc.positionAt(r.end)) : undefined;
+    const editor = await vscode.window.showTextDocument(doc, { viewColumn: this.panel.viewColumn, preview: false, selection: sel });
+    if (sel) editor.revealRange(sel, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+  }
+
+  /** Select the cell under the text editor's cursor, at a similar height on screen. */
+  syncFromText(snap: TextSnapshot) {
+    if (snap === this.lastSync) return;
+    if (!this.opts || !this.loaded) {
+      this.pendingSync = snap;
+      return;
+    }
+    this.pendingSync = undefined;
+    this.lastSync = snap;
+    try {
+      const doc = snap.document;
+      const text = doc.getText();
+      const [top, bottom] = snap.visible;
+      const line = snap.cursor.line;
+      const onScreen = line >= top && line <= bottom;
+      // Cursor scrolled out of view: keep the scroll position instead (top visible line at the top).
+      const pos = onScreen ? snap.cursor : new vscode.Position(top, 0);
+      const cell = cellAt(text, this.opts, doc.offsetAt(pos));
+      if (!cell) return;
+      const fraction = onScreen && bottom > top ? (line - top) / (bottom - top) : 0;
+      this.log.debug(`${this.name()}: from text ${line + 1}:${snap.cursor.character + 1} -> row ${cell.row} ${cell.colName ?? cell.col}`);
+      this.post({ type: 'reveal', row: cell.row, col: cell.col, colName: cell.colName, fraction, select: onScreen });
+    } catch (e) {
+      this.log.error(`${this.name()}: syncFromText failed: ${(e as Error).stack ?? e}`);
+    }
   }
 
   private stop() {

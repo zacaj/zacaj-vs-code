@@ -13,7 +13,16 @@ add this to your settings:
 "workbench.editorAssociations": { "*.jsonl": "zacaj.tableViewer", "*.csv": "zacaj.tableViewer" }
 ```
 
-**Text** in the toolbar reopens the file in the normal text editor.
+**Text** in the toolbar opens the file in the normal text editor, with the selected cell's text
+selected if there is one. Right-click a cell → **Edit in text editor** does the same for that
+cell. It's a quick way to edit: change the text and save, and the table reloads, keeping your
+filters, sort, selection and scroll position.
+
+Going the other way, switch from the text editor to the table (or open the table from the text
+editor) and the cell under the cursor is selected, at about the same height on screen. If its
+column is hidden, the nearest visible column is used; if its row is filtered out, the nearest
+visible row (the status bar says so). If the cursor had been scrolled out of view, the table
+scrolls to the text editor's top visible line instead.
 
 ## Features
 
@@ -55,14 +64,19 @@ add this to your settings:
 - **Column types** are inferred: a column is numeric or date if at least 95% of its non-empty
   values parse. This drives the sort order, right-alignment and range filters. The coloured dot
   in each header shows the type.
-- **Columns panel**: filter columns by name and show or hide them (all, matching, only matching,
-  empty). Click an entry to show/hide it, double-click to jump to it, drag to reorder. Hover
-  actions: go to, move to far left/right, pin.
+- **Columns panel**: a checkbox means the column is shown in the table. Click an entry to
+  check/uncheck it, double-click to jump to it, drag to reorder. Hover actions: go to, move to
+  far left/right, pin. Check/uncheck all (or just the listed entries), check only the listed
+  entries, or uncheck empty columns.
+  - **Filtering the list** never changes the table: filter by name, and use the **List:** toggles
+    to show or hide checked, unchecked and empty columns in the list. Empty means no values in
+    the rows passing the current filters, and such entries are tagged "empty".
   - **Multi-select**: Ctrl/⌘-click toggles an entry, Shift-click selects a range, Ctrl/⌘+A selects
     every listed entry, Esc clears. A bar then offers show, hide, pin, unpin, move to far
     left/right and auto width for the selection. Clicking, dragging or using a hover action on a
     selected entry applies to the whole selection.
-- **Header interactions**: click to sort (asc → desc → off), drag to reorder, drag the edge to
+- **Header interactions**: click to open the column's filter/sort popup (click again to close),
+  drag to reorder, drag the edge to
   resize, double-click the edge to go back to auto width, right-click for pin, move to far
   left/right, hide, etc.
 - **Column widths**: auto-sized columns fit the content of the rows that pass the current

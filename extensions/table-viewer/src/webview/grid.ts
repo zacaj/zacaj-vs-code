@@ -24,8 +24,8 @@ export interface GridSource {
 }
 
 export interface GridEvents {
-  onSort(col: number, e: MouseEvent): void;
-  onFilter(col: number, anchor: HTMLElement): void;
+  /** Plain click (not a drag) on a header cell. */
+  onHeaderClick(col: number, anchor: HTMLElement, e: MouseEvent): void;
   onResize(col: number, width: number, done: boolean): void;
   onAutoSize(col: number): void;
   onMove(col: number, before: number | null): void;
@@ -177,7 +177,7 @@ export class Grid {
   private headerCell(c: GridCol, x: number): string {
     const sort = c.sort ? `<span class="sort">${c.sort > 0 ? ICON.up : ICON.down}</span>` : '';
     return (
-      `<div class="hcell${c.filtered ? ' filtered' : ''}${c.pinned ? ' pinned' : ''}${c.col === this.flashCol ? ' flash' : ''}" data-c="${c.col}" style="left:${x}px;width:${c.width}px" title="${esc(c.name)} (${c.typeLabel})&#10;Click: sort · Drag: move · Right-click: more">` +
+      `<div class="hcell${c.filtered ? ' filtered' : ''}${c.pinned ? ' pinned' : ''}${c.col === this.flashCol ? ' flash' : ''}" data-c="${c.col}" style="left:${x}px;width:${c.width}px" title="${esc(c.name)} (${c.typeLabel})&#10;Click: filter &amp; sort · Drag: move · Right-click: more">` +
       `<span class="htype t-${c.typeLabel}"></span><span class="hname">${esc(c.name)}</span>${sort}` +
       `<span class="fbtn" title="Filter">${ICON.filter}</span><div class="resizer"></div></div>`
     );
@@ -214,7 +214,6 @@ export class Grid {
       const col = Number(hc.dataset.c);
       e.preventDefault();
       if (t.closest('.resizer')) return this.startResize(e, col, hc);
-      if (t.closest('.fbtn')) return this.ev.onFilter(col, hc);
       const sx = e.clientX;
       let dragging = false;
       const move = (m: MouseEvent) => {
@@ -245,7 +244,7 @@ export class Grid {
         window.removeEventListener('mouseup', up);
         this.dropMarker.style.display = 'none';
         hc.classList.remove('dragging');
-        if (!dragging) return this.ev.onSort(col, u);
+        if (!dragging) return this.ev.onHeaderClick(col, hc, u);
         const tgt = this.colAtX(u.clientX);
         if (!tgt) return;
         const beforeIdx = tgt.after ? tgt.index + 1 : tgt.index;

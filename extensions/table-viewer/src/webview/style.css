@@ -176,3 +176,8 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .cd-flag { font-size: 0.8em; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
 .cd-empty { padding: 4px 10px; }
 .hcell.flash { background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)); }
+
+.tool-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; width: 100%; }
+.chip { margin-right: 2px; font-size: 0.9em; }
+.tool-row .count { margin-left: auto; font-size: 0.85em; }
+.col-empty { font-size: 0.75em; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; }

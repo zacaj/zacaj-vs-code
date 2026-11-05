@@ -14,7 +14,16 @@ export interface Layout {
 }
 
 export type HostMessage =
-  | { type: 'reset'; fileName: string; format: Format; live: boolean; layout?: Layout; maxColumnWidth: number }
+  | {
+      type: 'reset';
+      fileName: string;
+      format: Format;
+      live: boolean;
+      layout?: Layout;
+      maxColumnWidth: number;
+      /** The file changed on disk and is being re-read: keep filters, selection and scroll. */
+      reload?: boolean;
+    }
   | {
       type: 'rows';
       /** Full column list; only sent when it changed. Columns are only ever appended. */
@@ -28,12 +37,20 @@ export type HostMessage =
       done: boolean;
     }
   | { type: 'status'; message: string; error?: boolean }
-  | { type: 'focusColumnSearch' };
+  | { type: 'focusColumnSearch' }
+  /**
+   * Select a cell (coming from the text editor). `row` is the data row index (-1 = header line);
+   * the column is by index (CSV) or name (JSONL). `fraction` places the row at that fraction of
+   * the viewport's height; `select` false only scrolls.
+   */
+  | { type: 'reveal'; row: number; col?: number; colName?: string; fraction?: number; select: boolean };
 
 export type WebviewMessage =
   | { type: 'ready' }
   | { type: 'saveLayout'; layout: Layout }
   | { type: 'copy'; text: string }
   | { type: 'openAsText' }
+  /** Open the text editor with this cell's text selected. `row` is the data row index. */
+  | { type: 'editCell'; row: number; col: number; colName: string }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string }
   | { type: 'reload' };

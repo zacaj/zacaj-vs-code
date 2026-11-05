@@ -1,6 +1,6 @@
 import type { ColType, Format, HostMessage, Layout, WebviewMessage } from '../shared/protocol';
 import { debounce, h, highlight, ICON } from './dom';
-import { Grid, type GridCol } from './grid';
+import { Grid, HEADER_H, ROW_H, type GridCol } from './grid';
 import {
   columnRange,
   computeView,
@@ -61,9 +61,9 @@ const visibleCols = () => {
 
 // ------------------------------------------------------------------ layout persistence
 
-const saveLayout = debounce(() => {
+function currentLayout(): Layout {
   const name = (c: number) => table.columns[c].name;
-  const l: Layout = {
+  return {
     order: order.map(name),
     hidden: [...hidden].map(name),
     pinned: [...pinned].map(name),
@@ -71,8 +71,11 @@ const saveLayout = debounce(() => {
     types: Object.fromEntries(table.columns.filter((c) => c.override).map((c) => [c.name, c.override!])),
     sort: sort ? { column: name(sort.col), dir: sort.dir } : undefined,
   };
-  layout = l;
-  post({ type: 'saveLayout', layout: l });
+}
+
+const saveLayout = debounce(() => {
+  layout = currentLayout();
+  post({ type: 'saveLayout', layout });
 }, 400);
 
 function addColumns(names: string[]) {
@@ -88,6 +91,8 @@ function addColumns(names: string[]) {
     if (layout.pinned?.includes(col.name)) pinned.add(c);
     const t = layout.types?.[col.name];
     if (t) col.override = t;
+    const kept = restore?.filters.get(col.name);
+    if (kept) filters.set(c, kept);
     if (layout.sort?.column === col.name && !sort) sort = { col: c, dir: layout.sort.dir };
     const p = pos.get(col.name);
     if (p === undefined) order.push(c);
@@ -167,7 +172,9 @@ function setAuto(cols: number[]) {
 /** Recompute the filtered/sorted view. `grow`: only let auto widths grow (live appends). */
 function recompute(sizing: 'fit' | 'grow' = 'fit') {
   view = computeView(table, query());
+  viewVersion++;
   if (autoSize({ growOnly: sizing === 'grow' })) refreshColumns();
+  else if (sidePanel === 'columns') renderColumnPanel();
   grid.invalidate();
   refreshChrome();
 }
@@ -204,11 +211,15 @@ function onRows(m: Extract<HostMessage, { type: 'rows' }>) {
     if (hadProv) while (view.length && view[view.length - 1] >= start) view.pop();
     const from = view.length;
     computeView(table, query(), start, view);
+    viewVersion++;
     if (autoSize({ rows: firstData ? view : view.slice(from), growOnly: !firstData })) refreshColumns();
     grid.invalidate();
     refreshChrome();
   }
-  if (follow && live) grid.scrollToBottom();
+  if (m.done && (restore || pendingReveal)) {
+    if (sort) recompute(); // sorted views recompute async; make sure the view is complete first
+    afterLoad();
+  } else if (follow && live) grid.scrollToBottom();
   if (popup?.refresh) popupRefreshSoon();
   if (sidePanel === 'details') renderDetails();
 }
@@ -246,11 +257,11 @@ const grid = new Grid(
     },
   },
   {
-    onSort: (col, e) => {
-      if (e.shiftKey || e.ctrlKey) return;
-      setSort(!sort || sort.col !== col ? { col, dir: 1 } : sort.dir === 1 ? { col, dir: -1 } : undefined);
+    onHeaderClick: (col, anchor) => {
+      // Toggle: clicking the same header again closes its popup.
+      if (popup?.col === col) return closePopup();
+      openFilterPopup(col, anchor);
     },
-    onFilter: (col, anchor) => openFilterPopup(col, anchor),
     onResize: (col, w, done) => {
       widths[col] = w;
       autoWidth[col] = false;
@@ -388,7 +399,7 @@ const clearBtn = h('button', { class: 'btn', title: 'Clear all filters and searc
 const colsBtn = h('button', { class: 'btn', title: 'Show, hide and reorder columns' }, 'Columns');
 const detailsBtn = h('button', { class: 'btn', title: 'Show all fields of the selected row' }, 'Row details');
 const followBtn = h('button', { class: 'btn toggle', title: 'Keep scrolled to newest rows as the file grows' }, 'Follow');
-const textBtn = h('button', { class: 'btn', title: 'Reopen as text' }, 'Text');
+const textBtn = h('button', { class: 'btn', title: 'Open as text (at the selected cell, if any)' }, 'Text');
 const status = h('div', { class: 'status' });
 
 const applySearch = debounce(() => {
@@ -429,7 +440,15 @@ followBtn.onclick = () => {
   if (follow) grid.scrollToBottom();
   refreshChrome();
 };
-textBtn.onclick = () => post({ type: 'openAsText' });
+textBtn.onclick = () => {
+  // With a cell selected, open the text at that cell.
+  if (grid.selRow >= 0 && grid.selCol >= 0 && view[grid.selRow] !== undefined) editCell(view[grid.selRow], grid.selCol);
+  else post({ type: 'openAsText' });
+};
+
+function editCell(row: number, col: number) {
+  post({ type: 'editCell', row, col, colName: table.columns[col]?.name ?? '' });
+}
 
 const fmt = (n: number) => n.toLocaleString();
 function refreshChrome() {
@@ -617,11 +636,42 @@ let colAnchor = -1;
 /** The clicked column plus the rest of the selection, if the clicked column is part of it. */
 const targetsFor = (c: number) => (colSel.has(c) ? inOrder(colSel) : [c]);
 
+/** What the columns panel lists (this never affects the table itself). */
+const listShow = { checked: true, unchecked: true, empty: true };
+let panelListed: number[] = [];
+let emptyCache: { key: string; set: Set<number> } | undefined;
+let viewVersion = 0;
+
+/** Columns with no values in the rows that pass the current filters. */
+function emptyColumns(): Set<number> {
+  const key = `${viewVersion}:${table.columns.length}`;
+  if (emptyCache?.key === key) return emptyCache.set;
+  const nonEmpty = new Set<number>();
+  for (const r of view) {
+    const row = table.rows[r];
+    for (let c = 0; c < row.length; c++) if (row[c]) nonEmpty.add(c);
+    if (nonEmpty.size === table.columns.length) break;
+  }
+  const set = new Set(table.columns.map((_, i) => i).filter((c) => !nonEmpty.has(c)));
+  emptyCache = { key, set };
+  return set;
+}
+
 function renderColumnPanel() {
   sideTitle.textContent = 'Columns';
-  sideFilter.placeholder = 'Filter columns…';
+  sideFilter.placeholder = 'Filter list by name…';
   const q = sideFilter.value.toLowerCase();
-  const matches = order.filter((c) => !q || table.columns[c].name.toLowerCase().includes(q));
+  const empty = emptyColumns();
+  const matches = order.filter(
+    (c) =>
+      (!q || table.columns[c].name.toLowerCase().includes(q)) &&
+      (hidden.has(c) ? listShow.unchecked : listShow.checked) &&
+      (listShow.empty || !empty.has(c)),
+  );
+  panelListed = matches;
+  const listFiltered = !!q || !listShow.checked || !listShow.unchecked || !listShow.empty;
+  const chip = (key: keyof typeof listShow, label: string, title: string) =>
+    h('label', { class: 'chk chip', title }, h('input', { type: 'checkbox', checked: listShow[key], onchange: (e: Event) => { listShow[key] = (e.target as HTMLInputElement).checked; renderColumnPanel(); } }), label);
   for (const c of colSel) if (c >= table.columns.length) colSel.delete(c);
   const sel = inOrder(colSel);
   const bulk = sel.length
@@ -641,12 +691,25 @@ function renderColumnPanel() {
     : null;
   setChildren(
     sideTools,
-    h('button', { class: 'btn', onclick: () => setHidden(matches, false) }, q ? 'Show matching' : 'Show all'),
-    h('button', { class: 'btn', onclick: () => setHidden(matches, true) }, q ? 'Hide matching' : 'Hide all'),
-    q ? h('button', { class: 'btn', title: 'Show only columns matching the filter', onclick: () => { setHidden(order, true); setHidden(matches, false); } }, 'Only matching') : null,
-    h('button', { class: 'btn', title: 'Hide columns with no values in the current rows', onclick: hideEmpty }, 'Hide empty'),
-    h('button', { class: 'btn', title: 'Restore original order, widths, visibility', onclick: resetLayout }, 'Reset'),
-    h('div', { class: 'hint muted' }, 'Click: show/hide · Ctrl/⌘-click, Shift-click: select · Double-click: go to · Drag: reorder'),
+    h(
+      'div',
+      { class: 'tool-row' },
+      h('span', { class: 'muted' }, 'List:'),
+      chip('checked', 'checked', 'List columns that are shown in the table'),
+      chip('unchecked', 'unchecked', 'List columns that are hidden from the table'),
+      chip('empty', 'empty', 'List columns with no values in the rows passing the current filters'),
+      h('span', { class: 'muted count' }, `${matches.length} of ${order.length}`),
+    ),
+    h(
+      'div',
+      { class: 'tool-row' },
+      h('button', { class: 'btn', title: 'Show these columns in the table', onclick: () => setHidden(matches, false) }, listFiltered ? 'Check listed' : 'Check all'),
+      h('button', { class: 'btn', title: 'Hide these columns from the table', onclick: () => setHidden(matches, true) }, listFiltered ? 'Uncheck listed' : 'Uncheck all'),
+      listFiltered ? h('button', { class: 'btn', title: 'Show only the listed columns in the table', onclick: () => { const keep = new Set(matches); hideOthers(keep); } }, 'Check only listed') : null,
+      h('button', { class: 'btn', title: 'Hide columns that have no values in the rows passing the current filters', onclick: hideEmpty }, 'Uncheck empty'),
+      h('button', { class: 'btn', title: 'Restore original order, widths, visibility', onclick: resetLayout }, 'Reset'),
+    ),
+    h('div', { class: 'hint muted' }, 'Checkbox = shown in table. Click: check/uncheck · Ctrl/⌘/Shift-click: select · Double-click: go to · Drag: reorder'),
     bulk,
   );
 
@@ -667,6 +730,7 @@ function renderColumnPanel() {
       { class: `col-item${hidden.has(c) ? ' off' : ''}${colSel.has(c) ? ' selected' : ''}`, draggable: true, title: col.name },
       h('input', { type: 'checkbox', checked: !hidden.has(c), tabIndex: -1 }),
       h('span', { class: 'col-name' }, col.name),
+      empty.has(c) ? h('span', { class: 'col-empty', title: 'No values in the rows passing the current filters' }, 'empty') : null,
       h('span', { class: `col-type t-${col.type}` }, col.type),
       isFilterActive(filters.get(c)) ? h('span', { class: 'col-f', title: 'Filtered' }, '●') : null,
       h(
@@ -736,8 +800,7 @@ side.addEventListener('keydown', (e) => {
     e.stopPropagation();
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && sidePanel === 'columns' && e.target !== sideFilter) {
     e.preventDefault();
-    const q = sideFilter.value.toLowerCase();
-    for (const c of order) if (!q || table.columns[c].name.toLowerCase().includes(q)) colSel.add(c);
+    for (const c of panelListed) colSel.add(c);
     renderColumnPanel();
   }
 });
@@ -764,12 +827,13 @@ function setPinned(cols: number[], pin: boolean) {
 }
 
 function hideEmpty() {
-  const nonEmpty = new Set<number>();
-  for (const r of view) {
-    const row = table.rows[r];
-    for (let c = 0; c < row.length; c++) if (row[c]) nonEmpty.add(c);
-  }
-  setHidden(order.filter((c) => !nonEmpty.has(c)), true);
+  setHidden([...emptyColumns()], true);
+}
+
+function hideOthers(keep: Set<number>) {
+  for (const c of order) keep.has(c) ? hidden.delete(c) : hidden.add(c);
+  saveLayout();
+  refreshColumns();
 }
 
 function resetLayout() {
@@ -874,6 +938,8 @@ function setValueFilter(c: number, v: string, mode: 'include' | 'exclude') {
 
 interface Popup {
   el: HTMLElement;
+  /** Column whose filter popup this is. */
+  col?: number;
   refresh?: () => void;
 }
 let popup: Popup | undefined;
@@ -892,7 +958,11 @@ function place(el: HTMLElement, x: number, y: number) {
 }
 
 document.addEventListener('mousedown', (e) => {
-  if (popup && !popup.el.contains(e.target as Node)) closePopup();
+  if (!popup || popup.el.contains(e.target as Node)) return;
+  // Leave it to the header's click handler to toggle its own popup.
+  const hc = (e.target as HTMLElement).closest?.('.hcell') as HTMLElement | null;
+  if (hc && popup.col !== undefined && Number(hc.dataset.c) === popup.col) return;
+  closePopup();
 }, true);
 
 const MAX_VALUES = 1000;
@@ -1073,6 +1143,7 @@ function openFilterPopup(c: number, anchor: HTMLElement) {
   place(el, r.left, r.bottom + 2);
   popup = {
     el,
+    col: c,
     refresh: () => {
       facets = facet(table, query(), c);
       renderValues();
@@ -1118,6 +1189,8 @@ function cellMenu(e: MouseEvent, r: number, c: number) {
   const short = v.length > 30 ? v.slice(0, 30) + '…' : v || '(empty)';
   const vis = visibleCols();
   menu(e, [
+    { label: 'Edit in text editor', run: () => editCell(ri, c) },
+    null,
     { label: 'Copy value', run: () => post({ type: 'copy', text: v }) },
     { label: 'Copy row (TSV)', run: () => post({ type: 'copy', text: vis.map((x) => table.rows[ri][x] ?? '').join('\t') }) },
     { label: 'Copy row (JSON)', run: () => post({ type: 'copy', text: JSON.stringify(rowObject(ri)) }) },
@@ -1196,6 +1269,114 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'Escape' && popup) closePopup();
 });
 
+// ------------------------------------------------------------------ reveal / reload
+
+interface ViewSnapshot {
+  filters: Map<string, ColumnFilter>;
+  sel?: { row: number; col: string };
+  top: number;
+  left: number;
+  follow: boolean;
+}
+let restore: ViewSnapshot | undefined;
+let pendingReveal: Extract<HostMessage, { type: 'reveal' }> | undefined;
+
+function snapshotView(): ViewSnapshot {
+  const name = (c: number) => table.columns[c]?.name;
+  return {
+    filters: new Map([...filters].map(([c, f]) => [name(c), f])),
+    sel: grid.selRow >= 0 && view[grid.selRow] !== undefined ? { row: view[grid.selRow], col: name(grid.selCol) } : undefined,
+    top: grid.el.scrollTop,
+    left: grid.el.scrollLeft,
+    follow,
+  };
+}
+
+/** View index of a data row, or of the nearest row that passes the filters. */
+function nearestViewRow(row: number): { r: number; exact: boolean } {
+  if (!view.length) return { r: -1, exact: false };
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < view.length; i++) {
+    const d = Math.abs(view[i] - row);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+      if (d === 0) break;
+    }
+  }
+  return { r: best, exact: bestDist === 0 };
+}
+
+/** The column itself if shown, else the nearest shown column in display order. */
+function nearestVisibleCol(col: number): number {
+  const vis = visibleCols();
+  if (!vis.length || vis.includes(col)) return col;
+  const pos = order.indexOf(col);
+  let best = vis[0];
+  let bestDist = Infinity;
+  for (const c of vis) {
+    const d = Math.abs(order.indexOf(c) - pos);
+    if (d < bestDist) {
+      bestDist = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/** Called once a (re)load finished: reapply a kept view, or a reveal that arrived while loading. */
+function afterLoad() {
+  if (restore) {
+    const k = restore;
+    restore = undefined;
+    follow = k.follow;
+    if (k.sel) {
+      const c = table.columns.findIndex((x) => x.name === k.sel!.col);
+      const { r } = nearestViewRow(k.sel.row);
+      if (r >= 0 && c >= 0) grid.select(r, nearestVisibleCol(c));
+    }
+    grid.scrollTo(k.left, k.top);
+  }
+  if (pendingReveal) {
+    const m = pendingReveal;
+    pendingReveal = undefined;
+    reveal(m);
+  }
+}
+
+function reveal(m: Extract<HostMessage, { type: 'reveal' }>) {
+  let col = m.col ?? (m.colName !== undefined ? table.columns.findIndex((c) => c.name === m.colName) : -1);
+  if (col < 0 || col >= table.columns.length) col = grid.selCol >= 0 ? grid.selCol : visibleCols()[0] ?? -1;
+  if (col < 0) return;
+  const shownCol = nearestVisibleCol(col);
+  const { r, exact } = m.row < 0 ? { r: 0, exact: true } : nearestViewRow(m.row);
+  if (r < 0) return;
+  const notes: string[] = [];
+  if (!exact) notes.push(`row ${fmt(m.row + 1)} is filtered out`);
+  if (shownCol !== col) notes.push(`column ${table.columns[col].name} is hidden`);
+  statusMsg = notes.length ? `${notes.join(', ')}: showing nearest` : '';
+  statusErr = false;
+  if (notes.length) {
+    const msg = statusMsg;
+    setTimeout(() => {
+      if (statusMsg === msg) {
+        statusMsg = '';
+        refreshChrome();
+      }
+    }, 5000);
+  }
+  if (m.select) grid.select(r, shownCol);
+  // Put the row at the same height on screen as the cursor was in the text editor.
+  const avail = grid.el.clientHeight - HEADER_H - ROW_H;
+  grid.scrollTo(undefined, Math.max(0, r * ROW_H - Math.round((m.fraction ?? 0) * avail)));
+  grid.scrollToColumn(shownCol);
+  if (follow && !grid.atBottom()) follow = false;
+  if (sidePanel === 'details') renderDetails();
+  refreshChrome();
+  grid.el.focus();
+}
+
 // ------------------------------------------------------------------ host messages
 
 window.addEventListener('message', (ev: MessageEvent<HostMessage>) => {
@@ -1212,10 +1393,13 @@ window.addEventListener('message', (ev: MessageEvent<HostMessage>) => {
 function handleMessage(m: HostMessage) {
   switch (m.type) {
     case 'reset': {
+      // A reload (file rewritten on disk, e.g. after editing it as text) keeps the user's view.
+      const keep = m.reload && table.columns.length ? snapshotView() : undefined;
       fileName = m.fileName;
       format = m.format;
       live = m.live;
-      layout = m.layout ?? {};
+      // On reload our own state is newest (the host's copy is saved with a debounce).
+      layout = keep ? currentLayout() : m.layout ?? {};
       maxColWidth = m.maxColumnWidth ?? 320;
       follow = false;
       loading = true;
@@ -1232,10 +1416,15 @@ function handleMessage(m: HostMessage) {
       view = [];
       grid.select(-1, -1);
       document.title = fileName;
+      restore = keep;
       refreshColumns();
       grid.invalidate();
       break;
     }
+    case 'reveal':
+      if (loading) pendingReveal = m;
+      else reveal(m);
+      break;
     case 'rows':
       statusMsg = '';
       statusErr = false;
