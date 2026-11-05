@@ -77,6 +77,12 @@
           "minimum": 0,
           "description": "How many levels of nested objects in JSON Lines rows to flatten into dotted columns (a.b.c). Deeper values are shown as JSON."
         },
+        "tableViewer.maxColumnWidth": {
+          "type": "number",
+          "default": 320,
+          "minimum": 60,
+          "description": "Maximum width (px) for automatically sized columns. Columns you resize by hand, or set a width for in the column's options, can be wider."
+        },
         "tableViewer.live": {
           "type": "boolean",
           "default": true,

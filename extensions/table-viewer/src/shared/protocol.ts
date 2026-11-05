@@ -14,7 +14,7 @@ export interface Layout {
 }
 
 export type HostMessage =
-  | { type: 'reset'; fileName: string; format: Format; live: boolean; layout?: Layout }
+  | { type: 'reset'; fileName: string; format: Format; live: boolean; layout?: Layout; maxColumnWidth: number }
   | {
       type: 'rows';
       /** Full column list; only sent when it changed. Columns are only ever appended. */

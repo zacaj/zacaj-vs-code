@@ -79,6 +79,10 @@ class EditorSession {
     this.readyTimer = setTimeout(() => this.notReady(), READY_TIMEOUT_MS);
   }
 
+  private maxColumnWidth(): number {
+    return Math.max(60, vscode.workspace.getConfiguration('tableViewer', this.uri).get('maxColumnWidth', 320));
+  }
+
   private name() {
     return path.basename(this.uri.path);
   }
@@ -160,7 +164,7 @@ class EditorSession {
     const layout = this.context.workspaceState.get<Layout>(this.layoutKey);
     this.lastColumnCount = 0;
     this.firstRead = true;
-    this.post({ type: 'reset', fileName: path.basename(this.uri.path), format: this.format, live: this.live, layout });
+    this.post({ type: 'reset', fileName: path.basename(this.uri.path), format: this.format, live: this.live, layout, maxColumnWidth: this.maxColumnWidth() });
     try {
       const opts = await this.options();
       this.log.info(
@@ -240,7 +244,7 @@ class EditorSession {
     if (batch.reset && !initialStatic) {
       const layout = this.context.workspaceState.get<Layout>(this.layoutKey);
       this.lastColumnCount = 0;
-      this.post({ type: 'reset', fileName: path.basename(this.uri.path), format: this.format, live: this.live, layout });
+      this.post({ type: 'reset', fileName: path.basename(this.uri.path), format: this.format, live: this.live, layout, maxColumnWidth: this.maxColumnWidth() });
     }
     const { rows, columns } = batch;
     const width = Math.max(1, columns.length);

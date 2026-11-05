@@ -111,13 +111,25 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .col-item.dragging { opacity: 0.4; }
 .col-item.drop-before { border-top-color: var(--accent); }
 .col-item.drop-after { border-bottom-color: var(--accent); }
-.col-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.col-name:hover { text-decoration: underline; }
+.col-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .col-type { font-size: 0.8em; color: var(--muted); background: none !important; }
 .col-f { color: var(--vscode-charts-orange, orange); font-size: 0.8em; }
-.pin { display: flex; opacity: 0.25; cursor: pointer; }
-.pin.on { opacity: 1; color: var(--accent); }
-.pin:hover { opacity: 0.8; }
+.col-item { user-select: none; }
+.col-item.selected { background: var(--vscode-list-inactiveSelectionBackground); outline: 1px solid var(--accent); outline-offset: -1px; }
+.col-item input { pointer-events: none; }
+.act { display: flex; align-items: center; cursor: pointer; opacity: 0.55; padding: 0 2px; }
+.act:hover { opacity: 1; }
+.acts { display: none; gap: 2px; }
+.col-item:hover .acts { display: flex; }
+.act.pin { opacity: 0.2; }
+.col-item:hover .act.pin { opacity: 0.55; }
+.act.pin.on { opacity: 1; color: var(--accent); }
+.hint { font-size: 0.8em; width: 100%; }
+.bulk { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; width: 100%; padding: 4px; border-radius: 3px;
+  background: var(--vscode-list-inactiveSelectionBackground); }
+.bulk-n { font-weight: 600; margin-right: 4px; }
+.width-row { display: flex; align-items: center; gap: 6px; }
+.width-in { width: 80px; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); height: 24px; padding: 2px 6px; }
 .d-item { display: grid; grid-template-columns: minmax(80px, 38%) 1fr auto; gap: 6px; padding: 3px 8px; border-bottom: 1px solid var(--grid-line); align-items: start; }
 .d-item:hover { background: var(--hover-bg); }
 .d-item.off .d-name { opacity: 0.55; font-style: italic; }

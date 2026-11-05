@@ -116,33 +116,57 @@ function measureChars() {
   return charW;
 }
 
-/** Fit auto-width columns to their content (sampled). */
-function estimateWidths(force?: number) {
-  const rows = table.rows;
-  if (!rows.length) return;
-  const sample = Math.min(rows.length, 300);
-  for (let c = 0; c < table.columns.length; c++) {
-    if (force !== undefined ? c !== force : !autoWidth[c] || widths[c] < 0) continue;
+let maxColWidth = 320;
+const SIZE_SAMPLE = 2000;
+
+/**
+ * Fit auto-width columns to the content of `rows` (default: the rows passing the current filters;
+ * sampled for big views). `growOnly` never shrinks a column, used for live appends to avoid jitter.
+ * Returns whether any width changed.
+ */
+function autoSize(opts: { cols?: number[]; rows?: number[]; growOnly?: boolean } = {}): boolean {
+  const src = opts.rows ?? view;
+  if (!src.length) return false;
+  const step = Math.max(1, src.length / SIZE_SAMPLE);
+  const sample: string[][] = [];
+  for (let i = 0; i < src.length; i += step) sample.push(table.rows[src[Math.floor(i)]]);
+  const cw = measureChars();
+  let changed = false;
+  for (const c of opts.cols ?? table.columns.map((_, i) => i)) {
+    if (!autoWidth[c]) continue;
     const lens: number[] = [];
-    for (let i = 0; i < sample; i++) {
-      const v = rows[i][c];
-      if (v) lens.push(Math.min(v.length, 80));
+    for (const row of sample) {
+      const v = row[c];
+      if (v) lens.push(Math.min(v.length, 200));
     }
     lens.sort((a, b) => a - b);
-    const p90 = lens.length ? lens[Math.min(lens.length - 1, Math.floor(lens.length * 0.95))] : 0;
-    const name = table.columns[c].name.length;
-    const cw = measureChars();
-    const content = (p90 + 2) * cw.cell + 14;
-    const header = name * cw.head + 48;
-    widths[c] = Math.round(Math.max(56, Math.min(force !== undefined ? 800 : 400, Math.max(content, Math.min(header, 240)))));
-    if (force === undefined) autoWidth[c] = true;
+    const p95 = lens.length ? lens[Math.min(lens.length - 1, Math.floor(lens.length * 0.95))] : 0;
+    const header = table.columns[c].name.length * cw.head + 48;
+    // An all-empty column only needs room for a (possibly truncated) header.
+    const want = lens.length ? Math.max((p95 + 2) * cw.cell + 14, Math.min(header, 240)) : Math.min(header, 140);
+    let w = Math.round(Math.max(56, Math.min(maxColWidth, want)));
+    if (opts.growOnly) w = Math.max(w, widths[c]);
+    if (w !== widths[c]) {
+      widths[c] = w;
+      changed = true;
+    }
   }
+  return changed;
+}
+
+function setAuto(cols: number[]) {
+  for (const c of cols) autoWidth[c] = true;
+  autoSize({ cols });
+  refreshColumns();
+  saveLayout();
 }
 
 // ------------------------------------------------------------------ view computation
 
-function recompute() {
+/** Recompute the filtered/sorted view. `grow`: only let auto widths grow (live appends). */
+function recompute(sizing: 'fit' | 'grow' = 'fit') {
   view = computeView(table, query());
+  if (autoSize({ growOnly: sizing === 'grow' })) refreshColumns();
   grid.invalidate();
   refreshChrome();
 }
@@ -160,10 +184,6 @@ function onRows(m: Extract<HostMessage, { type: 'rows' }>) {
   const firstData = before === 0 && m.rows.length > 0;
   const start = table.rows.length;
   table.append(m.rows, m.provisional);
-  if (firstData) {
-    estimateWidths();
-    refreshColumns();
-  }
   if (!loading && m.rows.length) {
     freshFrom = Math.min(freshFrom === Infinity ? start : freshFrom, start);
     freshUntil = Date.now() + 1500;
@@ -181,7 +201,9 @@ function onRows(m: Extract<HostMessage, { type: 'rows' }>) {
   } else {
     // Incremental: drop a removed provisional row from the view, filter only the new rows.
     if (hadProv) while (view.length && view[view.length - 1] >= start) view.pop();
+    const from = view.length;
     computeView(table, query(), start, view);
+    if (autoSize({ rows: firstData ? view : view.slice(from), growOnly: !firstData })) refreshColumns();
     grid.invalidate();
     refreshChrome();
   }
@@ -198,7 +220,7 @@ function recomputeThrottled() {
   throttleTimer = setTimeout(() => {
     throttleTimer = undefined;
     lastFull = Date.now();
-    recompute();
+    recompute('grow');
     if (follow && live) grid.scrollToBottom();
   }, wait);
 }
@@ -234,13 +256,8 @@ const grid = new Grid(
       refreshColumns();
       if (done) saveLayout();
     },
-    onAutoSize: (col) => {
-      estimateWidths(col);
-      autoWidth[col] = false;
-      refreshColumns();
-      saveLayout();
-    },
-    onMove: (col, before) => moveColumn(col, before),
+    onAutoSize: (col) => setAuto([col]),
+    onMove: (col, before) => moveColumns([col], before),
     onSelect: (r, c) => selectCell(r, c),
     onActivate: (r, c) => {
       selectCell(r, c);
@@ -310,18 +327,41 @@ function setSort(s: typeof sort) {
   recompute();
 }
 
-function moveColumn(col: number, before: number | null) {
-  const from = order.indexOf(col);
-  order.splice(from, 1);
-  if (before === null) order.push(col);
-  else order.splice(order.indexOf(before), 0, col);
-  // Moving across the pinned boundary pins/unpins.
-  if (before !== null && pinned.has(before) !== pinned.has(col)) {
-    if (pinned.has(before)) pinned.add(col);
-    else pinned.delete(col);
-  } else if (before === null) pinned.delete(col);
+/** Columns in current display order. */
+const inOrder = (cols: Iterable<number>) => {
+  const set = new Set(cols);
+  return order.filter((c) => set.has(c));
+};
+
+/** Move columns (keeping their relative order) before `before`, or to the end. */
+function moveColumns(cols: number[], before: number | null) {
+  const moving = inOrder(cols);
+  const set = new Set(moving);
+  const bi = before === null ? -1 : order.indexOf(before);
+  // If dropping onto one of the moved columns, anchor on the next column that isn't moving.
+  let anchor: number | null = null;
+  if (bi >= 0) for (let i = bi; i < order.length && anchor === null; i++) if (!set.has(order[i])) anchor = order[i];
+  const rest = order.filter((c) => !set.has(c));
+  const at = anchor === null ? rest.length : rest.indexOf(anchor);
+  order = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
+  // Dragging across the pinned boundary pins/unpins.
+  const pin = anchor !== null && pinned.has(anchor);
+  if (before !== null) for (const c of moving) pin ? pinned.add(c) : pinned.delete(c);
+  else for (const c of moving) pinned.delete(c);
   saveLayout();
   refreshColumns();
+}
+
+/** Move columns to the far left/right without changing whether they're pinned. */
+function moveToEdge(cols: number[], edge: 'left' | 'right') {
+  const moving = inOrder(cols);
+  const set = new Set(moving);
+  const rest = order.filter((c) => !set.has(c));
+  order = edge === 'left' ? [...moving, ...rest] : [...rest, ...moving];
+  saveLayout();
+  refreshColumns();
+  const vis = visibleCols();
+  if (moving.length && !hidden.has(moving[0])) grid.ensureVisible(Math.max(0, grid.selRow), edge === 'left' ? vis[0] : vis[vis.length - 1]);
 }
 
 function setFilter(col: number, f: ColumnFilter | undefined) {
@@ -434,11 +474,35 @@ function setSidePanel(p: typeof sidePanel) {
   refreshChrome();
 }
 
+/** Columns selected in the columns panel (Ctrl/Cmd-click, Shift-click) for bulk actions. */
+const colSel = new Set<number>();
+let colAnchor = -1;
+
+/** The clicked column plus the rest of the selection, if the clicked column is part of it. */
+const targetsFor = (c: number) => (colSel.has(c) ? inOrder(colSel) : [c]);
+
 function renderColumnPanel() {
   sideTitle.textContent = 'Columns';
   sideFilter.placeholder = 'Filter columns…';
   const q = sideFilter.value.toLowerCase();
   const matches = order.filter((c) => !q || table.columns[c].name.toLowerCase().includes(q));
+  for (const c of colSel) if (c >= table.columns.length) colSel.delete(c);
+  const sel = inOrder(colSel);
+  const bulk = sel.length
+    ? h(
+        'div',
+        { class: 'bulk' },
+        h('span', { class: 'bulk-n' }, `${sel.length} selected`),
+        h('button', { class: 'btn', onclick: () => setHidden(sel, false) }, 'Show'),
+        h('button', { class: 'btn', onclick: () => setHidden(sel, true) }, 'Hide'),
+        h('button', { class: 'btn', onclick: () => setPinned(sel, true) }, 'Pin'),
+        h('button', { class: 'btn', onclick: () => setPinned(sel, false) }, 'Unpin'),
+        h('button', { class: 'btn', title: 'Move to far left', onclick: () => moveToEdge(sel, 'left') }, '⇤ Left'),
+        h('button', { class: 'btn', title: 'Move to far right', onclick: () => moveToEdge(sel, 'right') }, 'Right ⇥'),
+        h('button', { class: 'btn', title: 'Reset widths to automatic', onclick: () => setAuto(sel) }, 'Auto width'),
+        h('button', { class: 'btn', title: 'Clear selection (Esc)', onclick: () => { colSel.clear(); renderColumnPanel(); } }, '✕'),
+      )
+    : null;
   setChildren(
     sideTools,
     h('button', { class: 'btn', onclick: () => setHidden(matches, false) }, q ? 'Show matching' : 'Show all'),
@@ -446,28 +510,69 @@ function renderColumnPanel() {
     q ? h('button', { class: 'btn', title: 'Show only columns matching the filter', onclick: () => { setHidden(order, true); setHidden(matches, false); } }, 'Only matching') : null,
     h('button', { class: 'btn', title: 'Hide columns with no values in the current rows', onclick: hideEmpty }, 'Hide empty'),
     h('button', { class: 'btn', title: 'Restore original order, widths, visibility', onclick: resetLayout }, 'Reset'),
+    h('div', { class: 'hint muted' }, 'Click: show/hide · Ctrl/⌘-click, Shift-click: select · Double-click: go to · Drag: reorder'),
+    bulk,
   );
-  let dragCol = -1;
+
+  let dragCols: number[] = [];
   const items = matches.map((c) => {
     const col = table.columns[c];
-    const cb = h('input', { type: 'checkbox', checked: !hidden.has(c), onchange: () => setHidden([c], !cb.checked) });
-    const pin = h('span', { class: `pin${pinned.has(c) ? ' on' : ''}`, title: pinned.has(c) ? 'Unpin' : 'Pin to left', onclick: () => togglePin(c) });
-    pin.innerHTML = ICON.pin;
+    const act = (label: string, title: string, run: () => void, cls = '') => {
+      const b = h('span', { class: `act ${cls}`, title });
+      b.innerHTML = label;
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        run();
+      });
+      return b;
+    };
     const li = h(
       'div',
-      { class: `col-item${hidden.has(c) ? ' off' : ''}`, draggable: true },
-      cb,
-      pin,
-      h('span', { class: 'col-name', title: col.name, onclick: () => revealColumn(c) }, col.name),
+      { class: `col-item${hidden.has(c) ? ' off' : ''}${colSel.has(c) ? ' selected' : ''}`, draggable: true, title: col.name },
+      h('input', { type: 'checkbox', checked: !hidden.has(c), tabIndex: -1 }),
+      h('span', { class: 'col-name' }, col.name),
       h('span', { class: `col-type t-${col.type}` }, col.type),
       isFilterActive(filters.get(c)) ? h('span', { class: 'col-f', title: 'Filtered' }, '●') : null,
+      h(
+        'span',
+        { class: 'acts' },
+        act('⌖', 'Go to column', () => revealColumn(c)),
+        act('⇤', 'Move to far left', () => moveToEdge(targetsFor(c), 'left')),
+        act('⇥', 'Move to far right', () => moveToEdge(targetsFor(c), 'right')),
+      ),
+      act(ICON.pin, pinned.has(c) ? 'Unpin' : 'Pin to left', () => setPinned(targetsFor(c), !pinned.has(c)), `pin${pinned.has(c) ? ' on' : ''}`),
     );
+    li.addEventListener('mousedown', (e) => {
+      if (e.shiftKey) e.preventDefault(); // no text selection on shift-click
+    });
+    li.addEventListener('click', (e) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (e.shiftKey && colAnchor >= 0 && matches.includes(colAnchor)) {
+        const [a, b] = [matches.indexOf(colAnchor), matches.indexOf(c)].sort((x, y) => x - y);
+        if (!mod) colSel.clear();
+        for (const x of matches.slice(a, b + 1)) colSel.add(x);
+      } else if (mod || e.shiftKey) {
+        colSel.has(c) ? colSel.delete(c) : colSel.add(c);
+        colAnchor = c;
+      } else {
+        // Plain click (row or checkbox) toggles visibility, for the whole selection if c is in it.
+        setHidden(targetsFor(c), !hidden.has(c));
+        colAnchor = c;
+        return;
+      }
+      renderColumnPanel();
+    });
+    li.addEventListener('dblclick', (e) => {
+      if (!(e.ctrlKey || e.metaKey || e.shiftKey)) revealColumn(c);
+    });
     li.addEventListener('dragstart', (e) => {
-      dragCol = c;
+      dragCols = targetsFor(c);
       e.dataTransfer!.effectAllowed = 'move';
+      e.dataTransfer!.setData('text/plain', dragCols.map((x) => table.columns[x].name).join(', '));
+      for (const el of sideBody.querySelectorAll('.col-item.selected')) if (colSel.has(c)) el.classList.add('dragging');
       li.classList.add('dragging');
     });
-    li.addEventListener('dragend', () => li.classList.remove('dragging'));
+    li.addEventListener('dragend', () => sideBody.querySelectorAll('.dragging').forEach((el) => el.classList.remove('dragging')));
     li.addEventListener('dragover', (e) => {
       e.preventDefault();
       const after = e.offsetY > li.offsetHeight / 2;
@@ -479,14 +584,28 @@ function renderColumnPanel() {
       e.preventDefault();
       const after = li.classList.contains('drop-after');
       li.classList.remove('drop-before', 'drop-after');
-      if (dragCol < 0 || dragCol === c) return;
-      const idx = order.indexOf(c) + (after ? 1 : 0);
-      moveColumn(dragCol, order[idx] === dragCol ? order[idx + 1] ?? null : order[idx] ?? null);
+      if (!dragCols.length) return;
+      moveColumns(dragCols, after ? order[order.indexOf(c) + 1] ?? null : c);
+      dragCols = [];
     });
     return li;
   });
   sideBody.replaceChildren(...items);
 }
+
+side.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && sidePanel === 'columns' && colSel.size) {
+    colSel.clear();
+    renderColumnPanel();
+    e.stopPropagation();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && sidePanel === 'columns' && e.target !== sideFilter) {
+    e.preventDefault();
+    const q = sideFilter.value.toLowerCase();
+    for (const c of order) if (!q || table.columns[c].name.toLowerCase().includes(q)) colSel.add(c);
+    renderColumnPanel();
+  }
+});
+side.tabIndex = -1;
 
 function setChildren(el: HTMLElement, ...kids: (Node | null)[]) {
   el.replaceChildren(...kids.filter((k): k is Node => !!k));
@@ -499,7 +618,11 @@ function setHidden(cols: number[], hide: boolean) {
 }
 
 function togglePin(c: number) {
-  pinned.has(c) ? pinned.delete(c) : pinned.add(c);
+  setPinned([c], !pinned.has(c));
+}
+
+function setPinned(cols: number[], pin: boolean) {
+  for (const c of cols) pin ? pinned.add(c) : pinned.delete(c);
   saveLayout();
   refreshColumns();
 }
@@ -522,7 +645,6 @@ function resetLayout() {
     autoWidth[c] = true;
     table.columns[c].override = undefined;
   }
-  estimateWidths();
   sort = undefined;
   saveLayout();
   refreshColumns();
@@ -672,7 +794,27 @@ function openFilterPopup(c: number, anchor: HTMLElement) {
     h('button', { class: `btn${sort?.col === c && sort.dir === -1 ? ' on' : ''}`, onclick: () => setSort({ col: c, dir: -1 }) }, 'Sort ▼'),
     h('button', { class: 'btn', onclick: () => { setHidden([c], true); closePopup(); } }, 'Hide'),
     h('button', { class: 'btn', onclick: () => { togglePin(c); closePopup(); } }, pinned.has(c) ? 'Unpin' : 'Pin'),
+    h('button', { class: 'btn', title: 'Move to far left (without pinning)', onclick: () => { moveToEdge([c], 'left'); closePopup(); } }, '⇤'),
+    h('button', { class: 'btn', title: 'Move to far right', onclick: () => { moveToEdge([c], 'right'); closePopup(); } }, '⇥'),
   );
+
+  const widthIn = h('input', { type: 'number', class: 'width-in', min: 36, step: 10, value: String(widths[c]), title: 'Column width in pixels (not limited by the max auto width)' });
+  const autoBtn = h('button', { class: `btn${autoWidth[c] ? ' on' : ''}`, title: `Size to the filtered rows' content, up to ${maxColWidth}px` }, 'Auto');
+  widthIn.addEventListener('input', () => {
+    const w = Math.round(Number(widthIn.value));
+    if (!(w >= 36)) return;
+    widths[c] = w;
+    autoWidth[c] = false;
+    autoBtn.classList.remove('on');
+    refreshColumns();
+    saveLayout();
+  });
+  autoBtn.onclick = () => {
+    setAuto([c]);
+    widthIn.value = String(widths[c]);
+    autoBtn.classList.add('on');
+  };
+  const widthRow = h('div', { class: 'width-row' }, h('span', { class: 'label' }, 'Width'), widthIn, h('span', { class: 'muted' }, 'px'), autoBtn);
 
   const text = h('input', { type: 'text', class: 'search', placeholder: 'Contains…  (=exact  !not  /regex/  "" empty)', value: cur().text ?? '', spellcheck: false });
   text.addEventListener('input', () => update({ text: text.value || undefined }));
@@ -771,6 +913,7 @@ function openFilterPopup(c: number, anchor: HTMLElement) {
     el,
     h('div', { class: 'popup-head' }, h('b', { title: col.name }, col.name), typeSel),
     sortBtns,
+    widthRow,
     h('div', { class: 'section' }, h('div', { class: 'label' }, 'Text filter'), text),
     range,
     h(
@@ -862,10 +1005,12 @@ function headerMenu(e: MouseEvent, c: number) {
     { label: 'Clear filter', run: () => setFilter(c, undefined), disabled: !isFilterActive(filters.get(c)) },
     null,
     { label: pinned.has(c) ? 'Unpin column' : 'Pin column to left', run: () => togglePin(c) },
+    { label: 'Move to far left', run: () => moveToEdge([c], 'left') },
+    { label: 'Move to far right', run: () => moveToEdge([c], 'right') },
     { label: 'Hide column', run: () => setHidden([c], true) },
     { label: 'Hide all other columns', run: () => { setHidden(order, true); setHidden([c], false); } },
     { label: 'Show all columns', run: () => setHidden(order, false) },
-    { label: 'Auto-size column', run: () => { estimateWidths(c); autoWidth[c] = false; refreshColumns(); saveLayout(); } },
+    { label: autoWidth[c] ? 'Auto-size column (on)' : 'Auto-size column', run: () => setAuto([c]), disabled: autoWidth[c] },
     null,
     { label: `Copy column name "${name}"`, run: () => post({ type: 'copy', text: name }) },
   ]);
@@ -931,6 +1076,7 @@ function handleMessage(m: HostMessage) {
       format = m.format;
       live = m.live;
       layout = m.layout ?? {};
+      maxColWidth = m.maxColumnWidth ?? 320;
       follow = false;
       loading = true;
       statusMsg = '';

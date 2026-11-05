@@ -44,10 +44,21 @@ add this to your settings:
 - **Column types** are inferred: a column is numeric or date if at least 95% of its non-empty
   values parse. This drives the sort order, right-alignment and range filters. The coloured dot
   in each header shows the type.
-- **Columns panel**: filter columns by name, show or hide them (all, matching, only matching,
-  empty), drag to reorder, pin to the left, or click a name to jump to that column.
+- **Columns panel**: filter columns by name and show or hide them (all, matching, only matching,
+  empty). Click an entry to show/hide it, double-click to jump to it, drag to reorder. Hover
+  actions: go to, move to far left/right, pin.
+  - **Multi-select**: Ctrl/⌘-click toggles an entry, Shift-click selects a range, Ctrl/⌘+A selects
+    every listed entry, Esc clears. A bar then offers show, hide, pin, unpin, move to far
+    left/right and auto width for the selection. Clicking, dragging or using a hover action on a
+    selected entry applies to the whole selection.
 - **Header interactions**: click to sort (asc → desc → off), drag to reorder, drag the edge to
-  resize, double-click the edge to auto-size, right-click for pin/hide/etc.
+  resize, double-click the edge to go back to auto width, right-click for pin, move to far
+  left/right, hide, etc.
+- **Column widths**: auto-sized columns fit the content of the rows that pass the current
+  filters and search, so a column that's empty after filtering shrinks. They're resized on every
+  filter change; live appends only ever grow them. Auto widths are capped at
+  `tableViewer.maxColumnWidth`. To make one column wider, drag its edge or type a width in its
+  options popup (the funnel), which has an **Auto** button to go back.
 - **Row details**: double-click or press `Enter` to see every field of a row vertically. Hidden
   columns are included, JSON is pretty-printed, and you get per-field "only this" / "exclude"
   buttons. This is the easy way to read a 150-column row.
@@ -70,6 +81,7 @@ line that isn't valid JSON goes to an `(unparsed)` column, and a non-object valu
 | `tableViewer.csv.delimiter` | `auto` | For `.csv`: `auto` sniffs `, ; \| tab` from the first line |
 | `tableViewer.tsv.quotes` | `false` | Treat `"quoted"` fields in `.tsv`/`.tab` CSV-style. Off by default, so quotes are literal |
 | `tableViewer.jsonl.flattenDepth` | `2` | Levels of nested objects to flatten |
+| `tableViewer.maxColumnWidth` | `320` | Maximum width (px) of auto-sized columns |
 | `tableViewer.live` | `true` | Watch the file and stream appends |
 
 ## Troubleshooting
