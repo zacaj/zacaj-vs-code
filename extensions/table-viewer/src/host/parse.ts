@@ -9,8 +9,11 @@ export interface ParseResult<T> {
   tail: T | null;
 }
 
-/** RFC 4180-ish delimited parser: quoted fields, "" escapes, embedded newlines, CRLF/LF. */
-export function parseDelimited(text: string, delim: string): ParseResult<string[]> {
+/**
+ * RFC 4180-ish delimited parser: quoted fields, "" escapes, embedded newlines, CRLF/LF.
+ * With `quotes` false (plain TSV), `"` is an ordinary character.
+ */
+export function parseDelimited(text: string, delim: string, quotes = true): ParseResult<string[]> {
   const records: string[][] = [];
   const n = text.length;
   const d = delim.charCodeAt(0);
@@ -29,7 +32,7 @@ export function parseDelimited(text: string, delim: string): ParseResult<string[
   };
 
   while (i < n) {
-    if (text.charCodeAt(i) === 34 /* " */) {
+    if (quotes && text.charCodeAt(i) === 34 /* " */) {
       let val = '';
       let seg = i + 1;
       for (;;) {

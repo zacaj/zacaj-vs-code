@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import { TableEditorProvider, VIEW_TYPE } from './host/provider';
 
 export function activate(context: vscode.ExtensionContext) {
+  const log = vscode.window.createOutputChannel('Table Viewer', { log: true });
   context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(VIEW_TYPE, new TableEditorProvider(context), {
+    log,
+    vscode.window.registerCustomEditorProvider(VIEW_TYPE, new TableEditorProvider(context, log), {
       webviewOptions: { retainContextWhenHidden: true },
       supportsMultipleEditorsPerDocument: true,
     }),

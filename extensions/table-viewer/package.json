@@ -66,6 +66,11 @@
           "default": "auto",
           "description": "Delimiter for .csv files: 'auto' sniffs the first line (, ; | tab). .tsv/.tab always use tab, .psv uses |."
         },
+        "tableViewer.tsv.quotes": {
+          "type": "boolean",
+          "default": false,
+          "description": "Treat \"quoted\" fields in .tsv/.tab files as CSV-style quoting (embedded tabs/newlines). Off by default: in plain TSV a quote is just a character."
+        },
         "tableViewer.jsonl.flattenDepth": {
           "type": "number",
           "default": 2,

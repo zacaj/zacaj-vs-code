@@ -28,6 +28,11 @@ test('parseDelimited: incomplete tail is reported, not committed', () => {
   assert.equal(parseDelimited('1,"ab"', ',').consumed, 0);
 });
 
+test('parseDelimited: quotes off (plain TSV) treats " literally', () => {
+  const r = parseDelimited('a\tb\n"open\tx\nsay "hi"\ty\n', '\t', false);
+  assert.deepEqual(r.records, [['a', 'b'], ['"open', 'x'], ['say "hi"', 'y']]);
+});
+
 test('splitLines', () => {
   assert.deepEqual(splitLines('{"a":1}\n{"a":2}\n{"a"'), { records: ['{"a":1}', '{"a":2}'], consumed: 16, tail: '{"a"' });
 });

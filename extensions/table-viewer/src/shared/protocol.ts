@@ -34,4 +34,5 @@ export type WebviewMessage =
   | { type: 'saveLayout'; layout: Layout }
   | { type: 'copy'; text: string }
   | { type: 'openAsText' }
+  | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string }
   | { type: 'reload' };

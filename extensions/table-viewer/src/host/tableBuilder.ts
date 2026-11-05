@@ -4,6 +4,8 @@ import { cellString, parseDelimited, splitLines } from './parse';
 export interface BuilderOptions {
   format: Format;
   delimiter: string;
+  /** Honour CSV-style "quoted" fields (off for plain TSV, where quotes are literal). */
+  quotes?: boolean;
   hasHeader: boolean;
   flattenDepth: number;
 }
@@ -58,7 +60,7 @@ export class TableBuilder {
   }
 
   private ingestCsv(text: string): IngestResult {
-    const { records, consumed, tail } = parseDelimited(text, this.opts.delimiter);
+    const { records, consumed, tail } = parseDelimited(text, this.opts.delimiter, this.opts.quotes ?? true);
     let columnsReset = false;
     const rows: string[][] = [];
     let start = 0;

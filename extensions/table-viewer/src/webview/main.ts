@@ -16,6 +16,16 @@ import {
 declare function acquireVsCodeApi(): { postMessage(m: WebviewMessage): void };
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage) => vscode.postMessage(m);
+const report = (level: 'warn' | 'error', message: string) => {
+  try {
+    post({ type: 'log', level, message });
+  } catch {
+    /* host gone */
+  }
+};
+// Forward uncaught webview errors to the host's "Table Viewer" output channel.
+window.addEventListener('error', (e) => report('error', `${e.message} at ${e.filename}:${e.lineno}:${e.colno}${e.error?.stack ? '\n' + e.error.stack : ''}`));
+window.addEventListener('unhandledrejection', (e) => report('error', `unhandled rejection: ${(e.reason as Error)?.stack ?? e.reason}`));
 
 // ------------------------------------------------------------------ state
 
@@ -904,7 +914,17 @@ window.addEventListener('keydown', (e) => {
 // ------------------------------------------------------------------ host messages
 
 window.addEventListener('message', (ev: MessageEvent<HostMessage>) => {
-  const m = ev.data;
+  try {
+    handleMessage(ev.data);
+  } catch (e) {
+    report('error', `handling '${ev.data?.type}' message: ${(e as Error).stack ?? e}`);
+    statusMsg = `Error: ${(e as Error).message} (see Output → Table Viewer)`;
+    statusErr = true;
+    refreshChrome();
+  }
+});
+
+function handleMessage(m: HostMessage) {
   switch (m.type) {
     case 'reset': {
       fileName = m.fileName;
@@ -942,10 +962,11 @@ window.addEventListener('message', (ev: MessageEvent<HostMessage>) => {
       refreshChrome();
       break;
   }
-});
+}
 
 // ------------------------------------------------------------------ mount
 
+document.getElementById('boot')?.remove();
 document.body.append(
   h(
     'div',

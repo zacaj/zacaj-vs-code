@@ -9,18 +9,30 @@ import type { BuilderOptions } from './tableBuilder';
 export const VIEW_TYPE = 'zacaj.tableViewer';
 /** Cap per-message payload so the webview can render the first rows of big files quickly. */
 const BATCH_CELLS = 400_000;
+/** If the webview hasn't said 'ready' by then, its script most likely failed to load. */
+const READY_TIMEOUT_MS = 10_000;
 
 export class TableEditorProvider implements vscode.CustomReadonlyEditorProvider {
   static activeUri: vscode.Uri | undefined;
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly log: vscode.LogOutputChannel,
+  ) {}
 
   openCustomDocument(uri: vscode.Uri): vscode.CustomDocument {
     return { uri, dispose() {} };
   }
 
   async resolveCustomEditor(doc: vscode.CustomDocument, panel: vscode.WebviewPanel): Promise<void> {
-    const session = new EditorSession(this.context, doc.uri, panel);
+    this.log.info(`open ${doc.uri.toString(true)}`);
+    let session: EditorSession;
+    try {
+      session = new EditorSession(this.context, doc.uri, panel, this.log);
+    } catch (e) {
+      this.log.error(`failed to create editor: ${(e as Error).stack ?? e}`);
+      throw e;
+    }
     const track = () => {
       if (panel.active) TableEditorProvider.activeUri = doc.uri;
     };
@@ -45,6 +57,8 @@ class EditorSession {
   private debounce: NodeJS.Timeout | undefined;
   private disposed = false;
   private lastColumnCount = 0;
+  private readyTimer: NodeJS.Timeout | undefined;
+  private firstRead = true;
   private readonly format: Format;
   private readonly live: boolean;
   private readonly layoutKey: string;
@@ -53,6 +67,7 @@ class EditorSession {
     private readonly context: vscode.ExtensionContext,
     private readonly uri: vscode.Uri,
     private readonly panel: vscode.WebviewPanel,
+    private readonly log: vscode.LogOutputChannel,
   ) {
     this.format = formatFor(uri);
     this.live = uri.scheme === 'file' && vscode.workspace.getConfiguration('tableViewer').get('live', true);
@@ -61,6 +76,19 @@ class EditorSession {
     panel.webview.options = { enableScripts: true, localResourceRoots: [media] };
     panel.webview.html = this.html(panel.webview, media);
     panel.webview.onDidReceiveMessage((m: WebviewMessage) => this.onMessage(m), undefined, this.disposables);
+    this.readyTimer = setTimeout(() => this.notReady(), READY_TIMEOUT_MS);
+  }
+
+  private name() {
+    return path.basename(this.uri.path);
+  }
+
+  private async notReady() {
+    const msg = `Table Viewer: the view for ${this.name()} hasn't started after ${READY_TIMEOUT_MS / 1000}s.`;
+    this.log.warn(`${msg} The webview script never sent 'ready' (failed to load or threw at startup).`);
+    const pick = await vscode.window.showWarningMessage(msg, 'Open Webview DevTools', 'Show Log');
+    if (pick === 'Open Webview DevTools') await vscode.commands.executeCommand('workbench.action.webview.openDeveloperTools');
+    if (pick === 'Show Log') this.log.show();
   }
 
   private post(m: HostMessage) {
@@ -70,7 +98,12 @@ class EditorSession {
   private async onMessage(m: WebviewMessage) {
     switch (m.type) {
       case 'ready':
+        clearTimeout(this.readyTimer);
+        this.log.info(`${this.name()}: webview ready`);
         await this.start();
+        break;
+      case 'log':
+        this.log[m.level](`${this.name()} [webview] ${m.message}`);
         break;
       case 'saveLayout':
         await this.context.workspaceState.update(this.layoutKey, m.layout);
@@ -99,6 +132,7 @@ class EditorSession {
     return {
       format: this.format,
       delimiter: delimiter || ',',
+      quotes: ext === '.tsv' || ext === '.tab' ? cfg.get('tsv.quotes', false) : true,
       hasHeader: cfg.get('csv.hasHeader', true),
       flattenDepth: cfg.get('jsonl.flattenDepth', 2),
     };
@@ -125,18 +159,25 @@ class EditorSession {
   private async start() {
     const layout = this.context.workspaceState.get<Layout>(this.layoutKey);
     this.lastColumnCount = 0;
+    this.firstRead = true;
     this.post({ type: 'reset', fileName: path.basename(this.uri.path), format: this.format, live: this.live, layout });
-    const opts = await this.options();
     try {
+      const opts = await this.options();
+      this.log.info(
+        `${this.name()}: format=${opts.format} delimiter=${JSON.stringify(opts.delimiter)} quotes=${opts.quotes} header=${opts.hasHeader} live=${this.live} scheme=${this.uri.scheme}`,
+      );
       if (this.uri.scheme === 'file') {
         this.reader = new LiveReader(this.uri.fsPath, opts);
         await this.readNow();
         if (this.live) this.watch();
       } else {
         const data = await vscode.workspace.fs.readFile(this.uri);
-        this.send(parseWhole(data, opts), true);
+        const batch = parseWhole(data, opts);
+        this.log.info(`${this.name()}: read ${batch.rows.length} rows, ${batch.columns.length} columns`);
+        this.send(batch, true);
       }
     } catch (e) {
+      this.log.error(`${this.name()}: start failed: ${(e as Error).stack ?? e}`);
       this.post({ type: 'status', message: `Failed to read file: ${(e as Error).message}`, error: true });
     }
   }
@@ -172,10 +213,18 @@ class EditorSession {
     if (!this.reader) return;
     this.reading = (async () => {
       try {
+        const t0 = Date.now();
         const batch = await this.reader!.read();
-        if (batch) this.send(batch, false);
+        if (batch) {
+          this.log[this.firstRead ? 'info' : 'debug'](
+            `${this.name()}: read ${batch.rows.length} rows, ${batch.columns.length} columns${batch.provisional ? ' (last provisional)' : ''}${batch.reset ? ' [reset]' : ''} in ${Date.now() - t0}ms`,
+          );
+          this.firstRead = false;
+          this.send(batch, false);
+        }
       } catch (e) {
         const err = e as NodeJS.ErrnoException;
+        this.log.error(`${this.name()}: read failed: ${err.stack ?? err}`);
         this.post({ type: 'status', message: err.code === 'ENOENT' ? 'File deleted — waiting for it to reappear' : `Read error: ${err.message}`, error: true });
       }
     })();
@@ -224,6 +273,7 @@ class EditorSession {
 
   dispose() {
     this.disposed = true;
+    clearTimeout(this.readyTimer);
     this.stop();
     for (const d of this.disposables.splice(0)) d.dispose();
   }
@@ -241,6 +291,8 @@ class EditorSession {
 <link rel="stylesheet" href="${css}">
 </head>
 <body>
+<div id="boot" style="padding:16px;opacity:.75">Loading table viewer… If this message stays, the viewer script failed to start:
+run <b>Developer: Open Webview Developer Tools</b> and check <b>Output → Table Viewer</b>.</div>
 <script nonce="${nonce}" src="${js}"></script>
 </body>
 </html>`;

@@ -64,8 +64,19 @@ line that isn't valid JSON goes to an `(unparsed)` column, and a non-object valu
 |---|---|---|
 | `tableViewer.csv.hasHeader` | `true` | First record is column names |
 | `tableViewer.csv.delimiter` | `auto` | For `.csv`: `auto` sniffs `, ; \| tab` from the first line |
+| `tableViewer.tsv.quotes` | `false` | Treat `"quoted"` fields in `.tsv`/`.tab` CSV-style. Off by default, so quotes are literal |
 | `tableViewer.jsonl.flattenDepth` | `2` | Levels of nested objects to flatten |
 | `tableViewer.live` | `true` | Watch the file and stream appends |
+
+## Troubleshooting
+
+- **Output → Table Viewer** logs each file opened, the parse settings it detected (delimiter,
+  quoting, header), how many rows and columns were read, and any errors, including uncaught
+  errors from the view itself. Set the log level to Debug (gear icon on the Output panel) to also
+  log every live append.
+- If the view stays blank, it shows a "Loading table viewer…" note, and after 10s you get a
+  warning with a button for **Developer: Open Webview Developer Tools**. That console shows why
+  the view's script didn't start.
 
 ## Architecture
 

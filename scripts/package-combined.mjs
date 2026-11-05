@@ -43,7 +43,10 @@ await esbuild.build({
     contents: [
       ...exts.map((e, i) => `import * as ${ids[i]} from ${JSON.stringify(path.join(e.dir, 'src', 'extension.ts'))};`),
       `const all = [${ids.join(', ')}];`,
-      `export function activate(ctx) { for (const e of all) e.activate?.(ctx); }`,
+      `const names = ${JSON.stringify(exts.map((e) => e.name))};`,
+      // Activate each independently so one failing extension doesn't take the rest down.
+      `export function activate(ctx) { all.forEach((e, i) => { try { const r = e.activate?.(ctx); if (r && r.catch) r.catch((err) => fail(i, err)); } catch (err) { fail(i, err); } }); }`,
+      `function fail(i, err) { console.error('[zacaj-extensions] ' + names[i] + ' failed to activate', err); require('vscode').window.showErrorMessage('zacaj-extensions: ' + names[i] + ' failed to activate: ' + (err && err.message || err)); }`,
       `export function deactivate() { return Promise.all(all.map((e) => e.deactivate?.())); }`,
     ].join('\n'),
   },
